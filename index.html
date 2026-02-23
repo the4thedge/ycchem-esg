@@ -632,10 +632,89 @@ function App() {
   const [pg, setPg] = useState("dash");
   const [data, setData] = useState({ s1:{}, s2:{}, s3:{} });
   const [pol, setPol] = useState({});
-  const setS1 = useCallback((id,v)=>setData(d=>({...d,s1:{...d.s1,[id]:v}})),[]);
-  const setS2 = useCallback((i,v)=>setData(d=>({...d,s2:{...d.s2,[i]:v}})),[]);
-  const setS3 = useCallback((id,v)=>setData(d=>({...d,s3:{...d.s3,[id]:v}})),[]);
-  const setP = useCallback((id,v)=>setPol(d=>({...d,[id]:v})),[]);
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  // Supabase 연결
+  const SB_URL = "https://jwveemnpjsxzpjmeuggw.supabase.co";
+  const SB_KEY = "sb_publishable_fehbLAN41_B_-ArqmJbX1w_zgw4kxxg";
+  
+  const sbFetch = useCallback(async (path, opts = {}) => {
+    const res = await fetch(SB_URL + "/rest/v1/" + path, {
+      ...opts,
+      headers: {
+        "apikey": SB_KEY,
+        "Authorization": "Bearer " + SB_KEY,
+        "Content-Type": "application/json",
+        "Prefer": opts.method === "PATCH" ? "return=minimal" : "return=representation",
+        ...(opts.headers || {}),
+      },
+    });
+    if (!res.ok) return null;
+    if (opts.method === "PATCH") return true;
+    return res.json();
+  }, []);
+
+  // 로드
+  const loadData = useCallback(async () => {
+    try {
+      const rows = await sbFetch("esg_data?select=category,data");
+      if (rows && rows.length > 0) {
+        const newData = { s1:{}, s2:{}, s3:{} };
+        let newPol = {};
+        rows.forEach(r => {
+          if (r.category === "s1") newData.s1 = r.data || {};
+          else if (r.category === "s2") newData.s2 = r.data || {};
+          else if (r.category === "s3") newData.s3 = r.data || {};
+          else if (r.category === "policy") newPol = r.data || {};
+        });
+        setData(newData);
+        setPol(newPol);
+      }
+    } catch(e) { console.log("Load error:", e); }
+    setLoaded(true);
+  }, [sbFetch]);
+
+  // 저장 (디바운스)
+  const saveTimer = React.useRef(null);
+  const saveData = useCallback((cat, val) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaving(true);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await sbFetch("esg_data?category=eq." + cat, {
+          method: "PATCH",
+          body: JSON.stringify({ data: val, updated_at: new Date().toISOString() }),
+        });
+      } catch(e) { console.log("Save error:", e); }
+      setSaving(false);
+    }, 800);
+  }, [sbFetch]);
+
+  // 초기 로드
+  React.useEffect(() => { loadData(); }, [loadData]);
+
+  const setS1 = useCallback((id,v)=>{
+    setData(d=>{const n={...d,s1:{...d.s1,[id]:v}};saveData("s1",n.s1);return n;});
+  },[saveData]);
+  const setS2 = useCallback((i,v)=>{
+    setData(d=>{const n={...d,s2:{...d.s2,[i]:v}};saveData("s2",n.s2);return n;});
+  },[saveData]);
+  const setS3 = useCallback((id,v)=>{
+    setData(d=>{const n={...d,s3:{...d.s3,[id]:v}};saveData("s3",n.s3);return n;});
+  },[saveData]);
+  const setP = useCallback((id,v)=>{
+    setPol(d=>{const n={...d,[id]:v};saveData("policy",n);return n;});
+  },[saveData]);
+
+  if (!loaded) return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:T.g50 }}>
+      <style>{globalCSS}</style>
+      <div style={{ textAlign:"center" }}>
+        <p style={{ fontSize:15, fontWeight:600, color:T.g500 }}>데이터 로딩 중...</p>
+      </div>
+    </div>
+  );
 
   if (!user) return <Login onLogin={u=>{setUser(u);setPg("dash");}}/>;
   const dept = DEPTS[user.dept] || { name:"관리자", color:T.g900, tag:"ALL" };
@@ -643,6 +722,9 @@ function App() {
   return (
     <div style={{ display:"flex", minHeight:"100vh", background:T.g50 }}>
       <style>{globalCSS}</style>
+
+      {/* SAVE INDICATOR */}
+      {saving && <div style={{ position:"fixed", top:12, right:12, zIndex:999, fontSize:12, fontWeight:500, color:T.g400, background:T.white, border:`1px solid ${T.g200}`, padding:"6px 14px", borderRadius:6 }}>저장 중...</div>}
 
       {/* SIDEBAR */}
       <div style={{ width:220, background:T.white, borderRight:`1px solid ${T.g200}`, padding:"20px 0", display:"flex", flexDirection:"column" }}>
