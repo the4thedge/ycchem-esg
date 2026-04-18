@@ -312,8 +312,9 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
   const [otherOpen, setOtherOpen] = useState(false);
   const ce = d => ud === "all" || ud === d;
 
-  const myBlocks = blocks.filter(b => ce(b.default_dept));
-  const otherBlocks = blocks.filter(b => !ce(b.default_dept));
+  const isScope = b => ['scope1_table','scope2_table','scope3_table'].includes(b.input_type);
+  const myBlocks = blocks.filter(b => isScope(b) || ce(b.default_dept));
+  const otherBlocks = blocks.filter(b => !isScope(b) && !ce(b.default_dept));
 
   const renderBlock = (block, isMine) => {
     const v = blockData[block.id];
