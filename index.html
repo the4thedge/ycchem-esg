@@ -325,14 +325,25 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
     // Scope 블록 (기존 컴포넌트 재활용)
     if (block.input_type === 'scope1_table' || block.input_type === 'scope2_table' || block.input_type === 'scope3_table') {
       let child;
-      if (block.input_type === 'scope1_table') child = <Scope1P data={scopeData.s1} set={setS1} ud={ud}/>;
-      else if (block.input_type === 'scope2_table') child = <Scope2P data={scopeData.s2} set={setS2} ud={ud}/>;
-      else child = <Scope3P data={scopeData.s3} set={setS3} ud={ud}/>;
-      
+      let scopeNeedInput = false;
+      if (block.input_type === 'scope1_table') {
+        child = <Scope1P data={scopeData.s1} set={setS1} ud={ud}/>;
+        const myFuels = [...SF, ...MF].filter(f => ud === 'all' || f.dept === ud);
+        scopeNeedInput = myFuels.length > 0 && myFuels.every(f => !scopeData.s1[f.id]);
+      } else if (block.input_type === 'scope2_table') {
+        child = <Scope2P data={scopeData.s2} set={setS2} ud={ud}/>;
+        scopeNeedInput = (ud === 'all' || ud === 'admin') && !Object.values(scopeData.s2 || {}).some(v => v);
+      } else {
+        child = <Scope3P data={scopeData.s3} set={setS3} ud={ud}/>;
+        const myCat = S3.filter(c => c.id !== 'c7' && (ud === 'all' || c.dept === ud));
+        scopeNeedInput = myCat.length > 0 && myCat.every(c => !scopeData.s3[c.id]);
+      }
+      const scopeHighlight = scopeNeedInput && ud !== 'all';
       return (
-        <div key={block.id} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", borderLeft: `3px solid ${T.g900}` }}>
+        <div key={block.id} style={{ background: scopeHighlight ? '#fff5f5' : T.white, borderRadius: 12, border: scopeHighlight ? `1px solid ${T.rose}44` : `1px solid ${T.g200}`, overflow: "hidden", borderLeft: scopeHighlight ? `3px solid ${T.rose}` : `3px solid ${T.g900}` }}>
           <div style={{ padding: "16px 24px", borderBottom: `1px solid ${T.g100}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {scopeHighlight && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: T.rose, padding: "3px 10px", borderRadius: 4, letterSpacing: "0.03em" }}>✍ 입력 필요</span>}
               <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>{block.title}</span>
               {griCodes && <span style={{ fontSize: 11, color: T.g400 }}>📊 GRI {griCodes}</span>}
               {vsmeCodes && <span style={{ fontSize: 11, color: T.g400 }}>📋 VSME {vsmeCodes}</span>}
@@ -349,15 +360,21 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
       ? (v?.content_text && v.content_text.length > 10)
       : (v?.content_json && v.content_json.length > 0 && v.content_json.some(r => Object.values(r||{}).some(x => x)));
 
+    const needInput = isMine && !done && ud !== "all";
+    const leftBorder = !isMine ? "1px solid " + T.g200
+                     : done ? `3px solid ${T.emerald}`
+                     : `3px solid ${T.rose}`;
+    const cardBg = needInput ? '#fff5f5' : T.white;
+
     return (
-      <div key={block.id} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", borderLeft: isMine ? `3px solid ${T.g900}` : "1px solid " + T.g200, opacity: isMine ? 1 : 0.55 }}>
+      <div key={block.id} style={{ background: cardBg, borderRadius: 12, border: needInput ? `1px solid ${T.rose}44` : `1px solid ${T.g200}`, overflow: "hidden", borderLeft: leftBorder, opacity: isMine ? 1 : 0.55 }}>
         <div style={{ padding: "16px 24px", borderBottom: `1px solid ${T.g100}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {isMine && ud !== "all" && <span style={{ fontSize: 11, fontWeight: 600, color: T.g900, background: T.g100, padding: "2px 8px", borderRadius: 4 }}>내 담당</span>}
-            {block.critical && <span style={{ fontSize: 11, fontWeight: 600, color: T.rose }}>필수</span>}
+            {needInput && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: T.rose, padding: "3px 10px", borderRadius: 4, letterSpacing: "0.03em" }}>✍ 입력 필요</span>}
+            {isMine && done && ud !== "all" && <span style={{ fontSize: 11, fontWeight: 600, color: T.emerald, background: T.emeraldBg, padding: "3px 10px", borderRadius: 4 }}>✓ 완료</span>}
+            {block.critical && !done && <span style={{ fontSize: 11, fontWeight: 700, color: T.rose }}>⚠ 필수</span>}
             <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>{block.title}</span>
             <span style={{ fontSize: 12, fontWeight: 500, color: T.g400 }}>{DEPTS[block.default_dept]?.name || block.default_dept}</span>
-            {done ? <span style={{ fontSize: 12, fontWeight: 500, color: T.emerald }}>완료</span> : <span style={{ fontSize: 12, fontWeight: 500, color: T.g300 }}>미작성</span>}
           </div>
           {(isMine || isAdmin) && <button onClick={() => setExOpen(p => ({...p, [block.id]: !p[block.id]}))}
             style={{ fontSize: 12, fontWeight: 500, color: exOpen[block.id] ? T.g600 : T.g400, background: "none", border: `1px solid ${T.g200}`, padding: "5px 12px", borderRadius: 6, cursor: "pointer" }}>
