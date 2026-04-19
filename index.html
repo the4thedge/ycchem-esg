@@ -54,6 +54,36 @@ const GWP = { co2: 1, ch4: 28, n2o: 265 };
 // 전력 배출계수 (기후에너지환경부 2025.12.17 공표, 2023년 기준)
 const EFS2 = 0.4173; // tCO₂eq/MWh
 
+// 3년치 보고 연도 (오늘 기준 3년: 2023, 2024, 2025)
+const REPORT_YEARS = (() => {
+  const current = new Date().getFullYear();
+  return [current - 3, current - 2, current - 1];
+})();
+const YEAR_LATEST = REPORT_YEARS[2];
+
+// 3년치 데이터 구조에서 연도별 값 추출 (기존 단일 숫자 호환)
+const getYearValue = (data, year) => {
+  if (data === null || data === undefined) return 0;
+  if (typeof data === "number") {
+    return year === YEAR_LATEST ? data : 0;
+  }
+  if (typeof data === "object") {
+    return parseFloat(data[year]) || 0;
+  }
+  return parseFloat(data) || 0;
+};
+
+// 3년치 구조에 연도별 값 설정
+const setYearValue = (data, year, value) => {
+  const base = (typeof data === "object" && data !== null) 
+    ? { ...data } 
+    : (typeof data === "number" 
+        ? { [YEAR_LATEST]: data } 
+        : {});
+  base[year] = value;
+  return base;
+};
+
 // 고정연소 연료 (환경부고시 [별표 12] 순발열량·배출계수)
 // ncv: 순발열량, 단위: MJ/기본단위
 // co2/ch4/n2o: kg/TJ
@@ -347,31 +377,41 @@ function ExcelUpload({ templateName, expectedFormat, onParse, hint }) {
 function FuelRowYearly({ fuel, value, unitKey, onChange, onUnitChange, disabled, highlightEmpty }) {
   const selectedUnit = (fuel.units || []).find(u => u.key === unitKey) || (fuel.units || [])[0];
   const factor = selectedUnit?.factor || 1;
-  const baseAmt = (parseFloat(value) || 0) * factor;
-  const em = calc(baseAmt, fuel.ncv, fuel.co2, fuel.ch4, fuel.n2o);
-  const isEmpty = !value;
-  const highlight = highlightEmpty && isEmpty && !disabled;
+  
+  // 연도별 값 추출 (기존 단일 숫자 호환)
+  const yearVals = REPORT_YEARS.map(y => getYearValue(value, y));
+  
+  // 연도별 배출량 계산
+  const yearEmissions = yearVals.map(v => {
+    const baseAmt = (parseFloat(v) || 0) * factor;
+    return calc(baseAmt, fuel.ncv, fuel.co2, fuel.ch4, fuel.n2o);
+  });
+  
+  // 3년 합계
+  const totalEm = yearEmissions.reduce((s, e) => s + e.t, 0);
+  // 최신 연도 vs 전년 증감률
+  const [, y2Em, y3Em] = yearEmissions;
+  const changePct = y2Em.t > 0 ? ((y3Em.t - y2Em.t) / y2Em.t * 100) : null;
+  
+  const updateYear = (yearIdx, newVal) => {
+    const year = REPORT_YEARS[yearIdx];
+    const next = setYearValue(value, year, newVal);
+    onChange(next);
+  };
+  
+  const isAllEmpty = yearVals.every(v => !v || v === 0);
+  const highlight = highlightEmpty && isAllEmpty && !disabled;
   
   return (
     <tr style={{ borderBottom: `1px solid ${T.g100}`, background: highlight ? '#fff5f5' : "transparent" }}>
-      <td style={{ padding: "12px 14px", fontWeight: 500, color: T.g800 }}>{fuel.name}</td>
-      <td style={{ padding: "8px 6px" }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input type="number" step="0.01" value={value || ""} disabled={disabled}
-            onChange={e => onChange(e.target.value)}
-            placeholder={highlight ? "입력 필요" : "0"}
-            style={{
-              flex: 1, padding: "8px 12px", borderRadius: 6,
-              border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
-              background: disabled ? T.g50 : T.white, color: T.g900,
-              textAlign: "right", fontSize: 14, fontWeight: 600,
-              opacity: disabled ? 0.5 : 1, minWidth: 100
-            }} />
+      <td style={{ padding: "12px 14px", fontWeight: 500, color: T.g800, verticalAlign: "top" }}>
+        <div>{fuel.name}</div>
+        <div style={{ marginTop: 6 }}>
           <select value={unitKey || selectedUnit?.key} disabled={disabled}
             onChange={e => onUnitChange(e.target.value)}
             style={{
-              padding: "8px 10px", borderRadius: 6, border: `1px solid ${T.g200}`,
-              background: T.white, fontSize: 13, color: T.g700, cursor: "pointer",
+              padding: "4px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+              background: T.white, fontSize: 11, color: T.g700, cursor: "pointer",
               opacity: disabled ? 0.5 : 1
             }}>
             {(fuel.units || []).map(u => (
@@ -379,16 +419,41 @@ function FuelRowYearly({ fuel, value, unitKey, onChange, onUnitChange, disabled,
             ))}
           </select>
         </div>
-        {selectedUnit?.hint && <p style={{ fontSize: 11, color: T.g400, marginTop: 4, paddingLeft: 2 }}>💡 {selectedUnit.hint}</p>}
       </td>
-      <td style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, color: T.g500 }}>
-        {baseAmt > 0 ? `${baseAmt.toLocaleString(undefined,{maximumFractionDigits:1})} ${fuel.baseUnit}` : "-"}
-      </td>
-      <td style={{ padding: "12px 14px", textAlign: "right", color: T.g500, fontSize: 13 }}>
-        {em.e > 0 ? em.e.toFixed(3) : "-"}
-      </td>
-      <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>
-        {em.t > 0 ? em.t.toFixed(2) : "-"}
+      {/* 3개 연도 입력 */}
+      {REPORT_YEARS.map((year, idx) => {
+        const v = yearVals[idx];
+        const isLatest = idx === 2;
+        const emptyY = !v || v === 0;
+        const hl = highlightEmpty && emptyY && !disabled && isLatest;
+        return (
+          <td key={year} style={{ padding: "8px 6px", verticalAlign: "top" }}>
+            <p style={{ fontSize: 10, color: T.g400, marginBottom: 3, fontWeight: isLatest ? 700 : 500 }}>
+              {year}{isLatest ? " (최신)" : ""}
+            </p>
+            <input type="number" step="0.01" value={v || ""} disabled={disabled}
+              onChange={e => updateYear(idx, e.target.value)}
+              placeholder={hl ? "입력 필요" : "0"}
+              style={{
+                width: "100%", padding: "6px 8px", borderRadius: 5,
+                border: hl ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+                background: disabled ? T.g50 : (isLatest ? T.white : T.g50),
+                color: T.g900, textAlign: "right", fontSize: 13, fontWeight: 600,
+                opacity: disabled ? 0.5 : 1
+              }} />
+            <p style={{ fontSize: 10, color: T.g400, marginTop: 3, textAlign: "right" }}>
+              {yearEmissions[idx].t > 0 ? yearEmissions[idx].t.toFixed(2) + " t" : "-"}
+            </p>
+          </td>
+        );
+      })}
+      <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'", verticalAlign: "top" }}>
+        {totalEm > 0 ? totalEm.toFixed(2) : "-"}
+        {changePct !== null && (
+          <div style={{ fontSize: 10, color: changePct < 0 ? T.emerald : T.rose, fontWeight: 500, marginTop: 4 }}>
+            {changePct < 0 ? "▼" : "▲"} {Math.abs(changePct).toFixed(1)}%
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -409,22 +474,28 @@ function Scope1P({ data, set, ud }) {
   const getUnit = (fuelId, fuel) => data[fuelId + "_unit"] || units[fuelId] || (fuel.units?.[0]?.key);
 
   const renderYearlyTable = (title, fuels, dk) => {
-    let sum = 0;
-    const visibleFuels = fuels.filter(f => ce(f.dept) || ud === "all" || true); // 다 보여주되 비담당은 disable
+    let totalSum = 0;
+    const yearSums = { [REPORT_YEARS[0]]: 0, [REPORT_YEARS[1]]: 0, [REPORT_YEARS[2]]: 0 };
+    const visibleFuels = fuels.filter(f => ce(f.dept) || ud === "all" || true);
     return (
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>{title}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: T.g400 }}>{DEPTS[dk].name}</span>
+          <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueBg, padding: "3px 8px", borderRadius: 4 }}>
+            📅 3년치 입력
+          </span>
         </div>
         <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
           <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
             <thead><tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
-              <th style={{ padding: "12px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: T.g500 }}>연료</th>
-              <th style={{ padding: "12px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: T.g500, width: "40%" }}>입력값 + 단위 선택</th>
-              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>{`환산값 (${fuels[0]?.baseUnit || ""})`}</th>
-              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>에너지 (TJ)</th>
-              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>배출량 (tCO₂eq)</th>
+              <th style={{ padding: "12px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: T.g500, width: "18%" }}>연료 · 단위</th>
+              {REPORT_YEARS.map(y => (
+                <th key={y} style={{ padding: "12px 8px", textAlign: "center", fontSize: 12, fontWeight: 600, color: y === YEAR_LATEST ? T.g800 : T.g500 }}>
+                  {y}년{y === YEAR_LATEST ? " (최신)" : ""}
+                </th>
+              ))}
+              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>3년 합계 (tCO₂eq)</th>
             </tr></thead>
             <tbody>
               {fuels.map(f => {
@@ -432,8 +503,15 @@ function Scope1P({ data, set, ud }) {
                 const val = getValue(f.id);
                 const uk = getUnit(f.id, f);
                 const unit = (f.units || []).find(u => u.key === uk) || (f.units || [])[0];
-                const baseAmt = (parseFloat(val) || 0) * (unit?.factor || 1);
-                sum += calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
+                const factor = unit?.factor || 1;
+                // 연도별 누적
+                REPORT_YEARS.forEach(y => {
+                  const yv = getYearValue(val, y);
+                  const baseAmt = (parseFloat(yv) || 0) * factor;
+                  const em = calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o);
+                  yearSums[y] += em.t;
+                  totalSum += em.t;
+                });
                 return (
                   <FuelRowYearly key={f.id} fuel={f}
                     value={val} unitKey={uk}
@@ -444,9 +522,14 @@ function Scope1P({ data, set, ud }) {
                   />
                 );
               })}
-              <tr style={{ background: T.g50, borderTop: `1px solid ${T.g200}` }}>
-                <td colSpan="4" style={{ padding: "12px 14px", fontSize: 13, fontWeight: 600, color: T.g600, textAlign: "right" }}>소계</td>
-                <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700, fontSize: 16, color: T.g900, fontFeatureSettings: "'tnum'" }}>{sum.toFixed(2)}</td>
+              <tr style={{ background: T.g50, borderTop: `2px solid ${T.g300}` }}>
+                <td style={{ padding: "12px 14px", fontSize: 13, fontWeight: 700, color: T.g700 }}>연도별 소계</td>
+                {REPORT_YEARS.map(y => (
+                  <td key={y} style={{ padding: "12px 8px", textAlign: "center", fontWeight: 700, fontSize: 14, color: T.g900, fontFeatureSettings: "'tnum'" }}>
+                    {yearSums[y] > 0 ? yearSums[y].toFixed(2) : "-"}
+                  </td>
+                ))}
+                <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, fontSize: 16, color: T.g900, fontFeatureSettings: "'tnum'" }}>{totalSum.toFixed(2)}</td>
               </tr>
             </tbody>
           </table>
@@ -1627,7 +1710,7 @@ function GlossaryTooltip({ termKey, children }) {
 
 const QUIZ_102_1a = {
   title: "102-1-a · 전환 계획 정책 및 조치",
-  intro: "4개 항목을 선택하시면 GRI 102 요구사항에 맞는 서술문이 자동 완성됩니다. 잘 모르겠는 용어는 옆의 '?' 버튼을 누르세요.",
+  intro: "4개 항목을 선택하시면 GRI 102 요구사항에 맞는 문안이 완성됩니다. 잘 모르겠는 용어는 옆의 '?' 버튼을 누르세요.",
   steps: [
     {
       id: "industry",
@@ -2237,10 +2320,10 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
           ))}
         </div>
         
-        {/* 자동 생성 서술문 */}
+        {/* 검토된 문안 */}
         <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.violet }}>📝 자동 생성된 서술문</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.violet }}>📝 검토된 문안</span>
             {!disabled && (
               <button onClick={() => setMode("manual")}
                 style={{
@@ -2248,7 +2331,7 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
                   background: T.white, border: `1px solid ${T.g300}`,
                   padding: "3px 8px", borderRadius: 4, cursor: "pointer"
                 }}>
-                ✏️ 서술문 직접 수정
+                ✏️ 내용 수정
               </button>
             )}
           </div>
@@ -2265,7 +2348,7 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.g600 }}>✏️ 서술문 직접 수정</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.g600 }}>✏️ 내용 수정</span>
           <button onClick={() => setMode(savedText ? "saved" : "quiz")}
             style={{ marginLeft: "auto", fontSize: 11, color: T.g500, background: "none", border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
             ← 취소
@@ -2317,7 +2400,7 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
         </div>
         
         <div style={{ background: T.violetBg, border: `1px solid ${T.violet}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.violet, marginBottom: 8 }}>📝 자동 생성된 서술문 (미리보기)</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.violet, marginBottom: 8 }}>📝 검토된 문안 (미리보기)</div>
           <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7, margin: 0 }}>{text}</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -2349,7 +2432,7 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
   // 이 단계만 수정 모드인 경우: 저장 후 saved로 바로 복귀
   const handleNextOrSave = () => {
     if (editingStep !== null) {
-      // 특정 단계만 수정 중 → 완료 후 바로 saved 복귀하며 서술문 재조립
+      // 특정 단계만 수정 중 → 완료 후 바로 saved 복귀하며 문안 재조립
       const newText = quiz.assemble(answers);
       onSave({ answers, text: newText });
       setEditingStep(null);
@@ -2474,14 +2557,14 @@ const GRI102_FIELDS = {
     glossary: "TRANSITION_PLAN",
     fields: [
       { id: "1a_policy", gri: "102-1-a", label: "정책 및 조치", type: "quiz", quiz: "102-1a",
-        hint: "4개 질문에 답하시면 서술문이 자동 완성됩니다." },
+        hint: "4개 질문에 답하시면 문안이 완성됩니다." },
       { id: "1b_scenario_source", gri: "102-1-b", label: "시나리오 출처", type: "checkbox",
         glossary: "IPCC_AR6",
         options: ["IPCC AR6 (권장)", "IEA Net Zero 2050", "NGFS", "기타"],
         hint: "최소 1개 선택. 중소기업은 IPCC AR6만 체크해도 충분." },
       { id: "1b_scenario_desc", gri: "102-1-b", label: "방법론 서술", type: "quiz", quiz: "102-1b",
         glossary: "GHG_PROTOCOL",
-        hint: "3개 항목을 선택하시면 방법론 서술문이 자동 생성됩니다." },
+        hint: "3개 항목을 선택하시면 방법론 문안이 완성됩니다." },
       { id: "1c_capex", gri: "102-1-c", label: "CapEx (자본적 지출)", type: "number", unit: "백만원",
         glossary: "CAPEX_OPEX",
         hint: "전환계획 관련 설비·인프라 투자 금액" },
@@ -2494,15 +2577,15 @@ const GRI102_FIELDS = {
         options: ["이사회 산하 ESG위원회 있음", "이사회가 직접 심의 (별도 위원회 없음)", "수립 예정"],
         hint: "중소기업 대부분은 '이사회 직접 심의' 선택" },
       { id: "1d_desc", gri: "102-1-d", label: "거버넌스 서술", type: "quiz", quiz: "102-1d",
-        hint: "3개 항목을 선택하시면 거버넌스 서술문이 자동 생성됩니다." },
+        hint: "3개 항목을 선택하시면 거버넌스 문안이 완성됩니다." },
       { id: "1e_integration", gri: "102-1-e", label: "사업 전략 통합", type: "quiz", quiz: "102-1e",
-        hint: "2개 항목을 선택하시면 서술문이 자동 생성됩니다." },
+        hint: "2개 항목을 선택하시면 문안이 완성됩니다." },
       { id: "1f_phaseout", gri: "102-1-f-ii", label: "화석연료 단계 폐지 목표", type: "textarea", rows: 2,
         hint: "해당 없으면 '당사는 석탄·중유 등 폐지 대상 화석연료를 직접 사용하지 않음' 기재.",
         placeholder: "해당 없음 또는: 2030년까지 보일러 LNG 의존도 -30%" },
       { id: "1g_just_transition", gri: "102-1-g", label: "공정 전환 원칙", type: "quiz", quiz: "102-1g",
         glossary: "JUST_TRANSITION",
-        hint: "2개 항목을 선택하시면 공정 전환 서술문이 자동 생성됩니다." },
+        hint: "2개 항목을 선택하시면 공정 전환 문안이 완성됩니다." },
       { id: "1h_biodiversity", gri: "102-1-h-ii", label: "생물다양성 영향", type: "radio",
         options: ["해당 없음 (사업 규모·특성상 유의미한 영향 없음)", "있음 (별도 서술)"] },
       { id: "1i_lobby", gri: "102-1-i", label: "로비·공공정책 활동", type: "radio",
@@ -2510,7 +2593,7 @@ const GRI102_FIELDS = {
       { id: "1i_associations", gri: "102-1-i", label: "소속 협회 (복수선택)", type: "checkbox",
         options: ["대한상공회의소", "중소기업중앙회", "한국화학산업협회", "한국반도체산업협회", "기타"] },
       { id: "1j_status", gri: "102-1-j", label: "전환 계획 수립 상태", type: "quiz", quiz: "102-1j",
-        hint: "2개 항목을 선택하시면 수립 상태 서술문이 자동 생성됩니다." },
+        hint: "2개 항목을 선택하시면 수립 상태 문안이 완성됩니다." },
     ]
   },
   "102-3": {
@@ -2537,7 +2620,7 @@ const GRI102_FIELDS = {
         glossary: "LIVING_WAGE",
         hint: "해당 지역 기본 생활 수준 이상 급여를 받는 직원 비율. 100이면 전원." },
       { id: "3_narrative", gri: "102-3", label: "공정전환 종합 서술", type: "quiz", quiz: "102-3",
-        hint: "2개 항목을 선택하시면 공정전환 서술문이 자동 생성됩니다." },
+        hint: "2개 항목을 선택하시면 공정전환 문안이 완성됩니다." },
     ]
   },
   "102-4": {
@@ -2571,7 +2654,7 @@ const GRI102_FIELDS = {
         glossary: "IPCC_2006",
         options: ["GHG Protocol", "IPCC 2006 가이드라인", "환경부고시 제2024-155호 배출계수", "GWP AR5 (CH₄=28, N₂O=265)"] },
       { id: "4_narrative", gri: "102-4", label: "감축 목표 종합 서술", type: "quiz", quiz: "102-4",
-        hint: "2개 항목을 선택하시면 감축 목표 서술문이 자동 생성됩니다." },
+        hint: "2개 항목을 선택하시면 감축 목표 문안이 완성됩니다." },
     ]
   },
   "102-2": {
@@ -2582,7 +2665,7 @@ const GRI102_FIELDS = {
         options: ["폭염 (근무환경·전력수요)", "폭우·홍수 (시설 침수)", "태풍 (시설 파손)", 
                   "정전 (공급 불안정) ← 와이씨켐 대표", "가뭄 (용수 부족)", "산불", "기타"] },
       { id: "2b_actions", gri: "102-2-b-i", label: "적응 조치 서술", type: "quiz", quiz: "102-2b",
-        hint: "2개 항목을 선택하시면 적응 조치 서술문이 자동 생성됩니다." },
+        hint: "2개 항목을 선택하시면 적응 조치 문안이 완성됩니다." },
       { id: "2c_capex", gri: "102-2-b-iii", label: "적응 관련 지출 (CapEx)", type: "number", unit: "백만원" },
       { id: "2c_opex", gri: "102-2-b-iii", label: "적응 관련 지출 (OpEx)", type: "number", unit: "백만원" },
       { id: "2d_gov", gri: "102-2-b-iv", label: "감독 거버넌스", type: "textarea", rows: 2,
@@ -2767,13 +2850,18 @@ function ClimateGraphs({ scopeData, blockData }) {
   if (!R) return null;
   const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = R;
   
-  // Scope 1·2·3 배출량 계산
-  const s1Total = calcScope1Total(scopeData.s1);
+  // Scope 1 3년치
+  const s1Yearly = calcScope1Yearly(scopeData.s1);
+  const s1Latest = s1Yearly[2] || 0;
+  
+  // Scope 2 (현재 단일 연도, 최신 연도에 매핑)
   const s2Kwh = scopeData.s2.yearly_val 
     ? (scopeData.s2.input_type === "원" ? scopeData.s2.yearly_val / 165 : scopeData.s2.yearly_val)
     : (scopeData.s2.monthly || []).reduce((a, b) => a + (parseFloat(b) || 0), 0);
-  const s2Total = (s2Kwh / 1000) * EFS2;
-  const s3Total = S3.reduce((sum, c) => {
+  const s2Latest = (s2Kwh / 1000) * EFS2;
+  
+  // Scope 3 (현재 단일 연도)
+  const s3Latest = S3.reduce((sum, c) => {
     if (c.id === "c7") {
       const d = scopeData.s3.commute || {};
       return sum + ((d.people||0) * (d.distance||0) * 250 * 0.17 / 1000);
@@ -2781,16 +2869,24 @@ function ClimateGraphs({ scopeData, blockData }) {
     return sum + (scopeData.s3[c.id] || 0) * (c.ef || 0);
   }, 0);
   
-  // 1. Scope 1·2·3 비교 바차트
+  // 1. 3년 추세 (Scope 1 연도별) + Scope 2/3는 최신 연도만
+  const yearlyTrend = REPORT_YEARS.map((y, i) => ({
+    year: y + "",
+    "Scope 1": +(s1Yearly[i] || 0).toFixed(2),
+    "Scope 2": i === 2 ? +s2Latest.toFixed(2) : 0,
+    "Scope 3": i === 2 ? +s3Latest.toFixed(2) : 0,
+  }));
+  
+  // 2. 최신 연도 Scope 1·2·3 비교
   const scopeData123 = [
-    { name: "Scope 1", value: +s1Total.toFixed(2), fill: T.rose },
-    { name: "Scope 2", value: +s2Total.toFixed(2), fill: T.amber },
-    { name: "Scope 3", value: +s3Total.toFixed(2), fill: T.violet },
+    { name: "Scope 1", value: +s1Latest.toFixed(2), fill: T.rose },
+    { name: "Scope 2", value: +s2Latest.toFixed(2), fill: T.amber },
+    { name: "Scope 3", value: +s3Latest.toFixed(2), fill: T.violet },
   ];
   
-  // 2. Scope 1 내부 breakdown (고정 vs 이동)
+  // 3. Scope 1 breakdown (최신 연도 기준)
   const stationaryTotal = SF.reduce((sum, f) => {
-    const amt = parseFloat(scopeData.s1[f.id]) || 0;
+    const amt = getYearValue(scopeData.s1[f.id], YEAR_LATEST);
     if (!amt) return sum;
     const unit = scopeData.s1[f.id + "_unit"] || f.baseUnit;
     const conv = (f.units || []).find(u => u.key === unit);
@@ -2798,7 +2894,7 @@ function ClimateGraphs({ scopeData, blockData }) {
     return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
   }, 0);
   const mobileTotal = MF.reduce((sum, f) => {
-    const amt = parseFloat(scopeData.s1[f.id]) || 0;
+    const amt = getYearValue(scopeData.s1[f.id], YEAR_LATEST);
     if (!amt) return sum;
     const unit = scopeData.s1[f.id + "_unit"] || f.baseUnit;
     const conv = (f.units || []).find(u => u.key === unit);
@@ -2810,15 +2906,17 @@ function ClimateGraphs({ scopeData, blockData }) {
   if (stationaryTotal > 0) s1Breakdown.push({ name: "고정연소", value: +stationaryTotal.toFixed(2), fill: T.blue });
   if (mobileTotal > 0) s1Breakdown.push({ name: "이동연소", value: +mobileTotal.toFixed(2), fill: T.indigo });
   
-  // 3. 감축 목표 진척
-  const baseYearEmission = parseFloat(blockData["_102_sub"]?.["4_base_year_emission"]?.v) || (s1Total + s2Total);
-  const currentEmission = s1Total + s2Total;
+  // 4. 감축 목표 진척
+  const baseYearEmission = parseFloat(blockData["_102_sub"]?.["4_base_year_emission"]?.v) || (s1Latest + s2Latest);
+  const currentEmission = s1Latest + s2Latest;
   const targetAnnual = parseFloat(blockData["_102_sub"]?.["4_target_short"]?.v) || 1.5;
   const targetEmission = baseYearEmission * (1 - targetAnnual/100);
   const progress = baseYearEmission > 0 ? Math.max(0, Math.min(100, ((baseYearEmission - currentEmission) / (baseYearEmission - targetEmission)) * 100)) : 0;
   
-  const total = s1Total + s2Total + s3Total;
-  if (total < 0.01) {
+  const total = s1Latest + s2Latest + s3Latest;
+  const s1HasMultiYear = s1Yearly.some(v => v > 0);
+  
+  if (total < 0.01 && !s1HasMultiYear) {
     return (
       <div style={{ padding: 40, textAlign: "center", background: T.g50, borderRadius: 12, color: T.g500 }}>
         💡 Scope 1/2/3 배출량 데이터를 입력하면 그래프가 실시간으로 표시됩니다.
@@ -2828,10 +2926,40 @@ function ClimateGraphs({ scopeData, blockData }) {
   
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      {/* 그래프 1: Scope 1·2·3 비교 */}
+      {/* 그래프 1: 3년 추세 막대그래프 (전체 폭) */}
+      <div style={{ gridColumn: "1 / -1", background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800 }}>📈 3년 배출량 추세 ({REPORT_YEARS[0]}~{REPORT_YEARS[2]})</h4>
+          {s1Yearly[1] > 0 && s1Yearly[2] > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 700,
+              color: s1Yearly[2] < s1Yearly[1] ? T.emerald : T.rose,
+              background: s1Yearly[2] < s1Yearly[1] ? T.emeraldBg : T.roseBg,
+              padding: "2px 8px", borderRadius: 4
+            }}>
+              Scope 1 전년 대비 {s1Yearly[2] < s1Yearly[1] ? "▼" : "▲"} {Math.abs((s1Yearly[2]-s1Yearly[1])/s1Yearly[1]*100).toFixed(1)}%
+            </span>
+          )}
+        </div>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: tCO₂eq · GRI 102-5 · 연도별 Scope 1 추이 (Scope 2/3는 {YEAR_LATEST}년 데이터만)</p>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={yearlyTrend}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.g200}/>
+            <XAxis dataKey="year" tick={{fontSize: 12}}/>
+            <YAxis tick={{fontSize: 12}}/>
+            <Tooltip/>
+            <Legend wrapperStyle={{fontSize: 12}}/>
+            <Bar dataKey="Scope 1" fill={T.rose} radius={[4, 4, 0, 0]}/>
+            <Bar dataKey="Scope 2" fill={T.amber} radius={[4, 4, 0, 0]}/>
+            <Bar dataKey="Scope 3" fill={T.violet} radius={[4, 4, 0, 0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      
+      {/* 그래프 2: 최신 연도 Scope 1·2·3 */}
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>Scope 1·2·3 배출량</h4>
-        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: tCO₂eq · GRI 102-5/6/7</p>
+        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>{YEAR_LATEST}년 Scope 1·2·3</h4>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>최신 연도 기준 · tCO₂eq</p>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={scopeData123}>
             <CartesianGrid strokeDasharray="3 3" stroke={T.g200}/>
@@ -2845,9 +2973,9 @@ function ClimateGraphs({ scopeData, blockData }) {
         </ResponsiveContainer>
       </div>
       
-      {/* 그래프 2: Scope 1 breakdown */}
+      {/* 그래프 3: Scope 1 breakdown */}
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>Scope 1 배출원</h4>
+        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>Scope 1 배출원 ({YEAR_LATEST})</h4>
         <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>고정연소 vs 이동연소</p>
         {s1Breakdown.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
@@ -2863,7 +2991,7 @@ function ClimateGraphs({ scopeData, blockData }) {
         )}
       </div>
       
-      {/* 그래프 3: 감축 목표 진척 게이지 */}
+      {/* 그래프 4: 감축 목표 진척 게이지 */}
       <div style={{ gridColumn: "1 / -1", background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
         <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>감축 목표 진척률</h4>
         <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>
@@ -2889,15 +3017,22 @@ function ClimateGraphs({ scopeData, blockData }) {
   );
 }
 
-function calcScope1Total(s1) {
+function calcScope1Total(s1, targetYear) {
+  const year = targetYear || YEAR_LATEST;
   return [...SF, ...MF].reduce((sum, f) => {
-    const amt = parseFloat(s1[f.id]) || 0;
+    const raw = s1[f.id];
+    const amt = getYearValue(raw, year);
     if (!amt) return sum;
     const unit = s1[f.id + "_unit"] || f.baseUnit;
     const conv = (f.units || []).find(u => u.key === unit);
     const baseAmt = conv ? amt * conv.factor : amt;
     return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
   }, 0);
+}
+
+// 3년치 Scope 1 배출량 배열 반환 [2023, 2024, 2025]
+function calcScope1Yearly(s1) {
+  return REPORT_YEARS.map(y => calcScope1Total(s1, y));
 }
 
 // GRI 102 고급 입력 페이지 (서술 공시 sub-block 렌더)
@@ -2959,8 +3094,14 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
   const ce = d => ud === "all" || ud === d;
 
   const isScope = b => ['scope1_table','scope2_table','scope3_table'].includes(b.input_type);
-  const myBlocks = blocks.filter(b => isScope(b) || ce(b.default_dept));
-  const otherBlocks = blocks.filter(b => !isScope(b) && !ce(b.default_dept));
+  
+  // GRI 102 페이지에서는 기존 서술형(text) 블록은 새 시스템(GRI102AdvancedPanel)이 대체하므로 숨김
+  const visibleBlocks = standard.code === "102"
+    ? blocks.filter(b => isScope(b))  // Scope 블록만 남김
+    : blocks;
+  
+  const myBlocks = visibleBlocks.filter(b => isScope(b) || ce(b.default_dept));
+  const otherBlocks = visibleBlocks.filter(b => !isScope(b) && !ce(b.default_dept));
 
   const renderBlock = (block, isMine) => {
     const v = blockData[block.id];
@@ -3148,7 +3289,7 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
 
       {ud === "all" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {blocks.map(b => renderBlock(b, true))}
+          {visibleBlocks.map(b => renderBlock(b, true))}
         </div>
       )}
     </div>
@@ -3156,15 +3297,12 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
 }
 
 function Dash({ scopeData, blockData, blocks, standards }) {
-  // Scope 1: 연간 + 월별 합산, 단위 환산 적용
-  let s1total = 0;
+  // Scope 1: 최신 연도 기준 (3년치 구조 호환)
+  let s1total = calcScope1Total(scopeData.s1, YEAR_LATEST);
+  // 월별 추가 (기존 구조 유지)
   [...SF, ...MF].forEach(f => {
-    const val = scopeData.s1[f.id] || 0;
     const uk = scopeData.s1[f.id + "_unit"] || (f.units?.[0]?.key);
     const unit = (f.units || []).find(u => u.key === uk) || f.units?.[0];
-    const baseAmt = (parseFloat(val) || 0) * (unit?.factor || 1);
-    s1total += calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
-    // 월별도 추가
     const monthly = scopeData.s1["_monthly_" + f.id];
     if (monthly && Array.isArray(monthly)) {
       const sum = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
