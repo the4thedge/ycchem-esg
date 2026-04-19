@@ -1602,7 +1602,13 @@ function Dash({ scopeData, blockData, blocks, standards }) {
 }
 
 function App() {
-  const [user, setUser] = useState(null);
+  // localStorage에서 이전 로그인 상태 복구
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("esg_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch(e) { return null; }
+  });
   const [pg, setPg] = useState("dash");
   const [scopeData, setScopeData] = useState({ s1: {}, s2: {}, s3: {} });
   const [blockData, setBlockDataState] = useState({});
@@ -1612,6 +1618,14 @@ function App() {
   const [vsmeMap, setVsmeMap] = useState({});
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  // user 변경 시 localStorage 자동 동기화
+  useEffect(() => {
+    try {
+      if (user) localStorage.setItem("esg_user", JSON.stringify(user));
+      else localStorage.removeItem("esg_user");
+    } catch(e) {}
+  }, [user]);
 
   const SB_URL = "https://jwveemnpjsxzpjmeuggw.supabase.co";
   const SB_KEY = "sb_publishable_fehbLAN41_B_-ArqmJbX1w_zgw4kxxg";
