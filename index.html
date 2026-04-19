@@ -8,6 +8,8 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.min.js"></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -1331,6 +1333,465 @@ function TableInput({ value, onChange, disabled }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 🌡️ GRI 102 기후변화 전용 고급 입력 페이지
+// 공시별 sub-block + 와이씨켐 v9 자동 템플릿 + 실시간 그래프
+// ═══════════════════════════════════════════════════════════════════════
+
+// 와이씨켐 v9 실전 문구 자동 템플릿 (중소기업 참조용)
+const YC_TEMPLATES = {
+  "1a_policy": "당사는 급변하는 기후 환경에 능동적으로 대응하기 위해 온실가스 감축을 전사적 경영 목표로 설정하였습니다. 전력 소비 비중이 높은 [업종]의 특성을 고려하여, 설비 가동 효율화와 에너지 집약도 개선을 중심으로 실질적인 탄소 저감 활동을 전개하고 있습니다. 주요 정책으로는 (1) 노후 설비의 단계적 효율 관리, (2) 운송 차량의 단계적 전기차 전환, (3) 사내 에너지 절약 캠페인 운영이 있습니다.",
+  "1b_scenario": "당사는 IPCC 제6차 평가보고서(AR6)의 1.5°C 경로를 참고하여 감축 목표를 설정하였으며, GRI 102: 기후변화 2025 최신 가이드라인 기반으로 배출량 산정 및 검증 체계를 구축하였습니다. 향후 과학기반감축목표(SBTi) 방법론 도입 및 정합성 검증을 단계적으로 추진할 예정입니다.",
+  "1d_gov": "당사의 최고 의사결정기구는 이사회이며, 대표이사가 이사회 의장을 겸임합니다. 이사회는 주요 경영 현안과 ESG 관련 중요 사안을 심의·승인합니다. 별도의 ESG 위원회는 설치되어 있지 않으며, 환경안전부를 전담 조직으로 지정하여 연 1회 배출량 산정 및 성과 점검을 수행하고 있습니다.",
+  "1e_strategy": "당사는 연간 경영 계획 수립 시 환경안전부가 탄소 감축 과제를 제안하고, 이사회 승인 후 설비 투자 예산에 반영합니다. 중장기 경영계획에 기후 대응 목표가 명시되어 있으며, 전기차 전환·에너지 효율화를 핵심 과제로 추진하고 있습니다.",
+  "1g_just": "당사는 산업 환경 변화 및 제품 변경 시 임직원의 고용 안정을 위해 '직무 재배치 및 재교육'을 원칙으로 적용하고 있습니다. 노사협의회를 통한 정기적인 의견 청취를 진행합니다.",
+  "1j_absent": "당사는 현재 전환 계획을 수립 중이며, 2026년 내 최종 확정 예정입니다. 현재 단계: 환경안전부 내부 분석 완료, 이사회 보고 준비 중.",
+  "3_just": "당사는 임직원의 고용 안정과 역량 강화를 위해 직무 재배치·재교육 프로그램을 운영하고 있습니다. 2025년 전환 배치 대상자 [N]명 전원이 총 [H]시간의 교육을 이수하여 100%의 참여율을 달성했습니다.",
+  "4_target": "당사는 ESRS의 시간 구분 기준에 따라 온실가스 감축 목표를 단기·중기·장기로 분류합니다. [기준연도]년을 기준연도로 설정하였으며, 매년 총배출량(Scope 1+2) 대비 [N]% 감축을 목표로 합니다. 환경안전부를 전담 조직으로 지정하여 연 1회 배출량 산정 및 성과 점검을 수행하고 있습니다.",
+};
+
+// 공시별 sub-field 정의 (GRI 102 원문 기반)
+const GRI102_FIELDS = {
+  "102-1": {
+    title: "전환 계획 (기후변화 완화)",
+    desc: "지구 온난화 1.5°C 제한을 위한 조직의 전반적 전략. 정책·조치·투자·책임성·목표를 포함.",
+    fields: [
+      { id: "1a_policy", gri: "102-1-a", label: "정책 및 조치", type: "textarea", rows: 5,
+        hint: "에너지·토지이용·공급망·인권 관련 정책 2~3개 개요. 상세 설명 불필요.",
+        template: YC_TEMPLATES["1a_policy"], placeholder: "예: 에너지 절감 방침, 차량 전기차 전환, 설비 효율 개선..." },
+      { id: "1b_scenario_source", gri: "102-1-b", label: "시나리오 출처", type: "checkbox",
+        options: ["IPCC AR6 (권장)", "IEA Net Zero 2050", "NGFS", "기타"],
+        hint: "최소 1개 선택. 중소기업은 IPCC AR6만 체크해도 충분." },
+      { id: "1b_scenario_desc", gri: "102-1-b", label: "방법론 서술", type: "textarea", rows: 3,
+        template: YC_TEMPLATES["1b_scenario"] },
+      { id: "1c_capex", gri: "102-1-c", label: "CapEx (자본적 지출)", type: "number", unit: "백만원",
+        hint: "전환계획 관련 설비·인프라 투자 금액" },
+      { id: "1c_opex", gri: "102-1-c", label: "OpEx (운영비)", type: "number", unit: "백만원",
+        hint: "에너지 관리 시스템 운영비·교육비 등" },
+      { id: "1c_revenue", gri: "102-1-c", label: "연간 총매출", type: "number", unit: "백만원",
+        hint: "비율 자동 계산용. 매출이 비공개면 빈칸." },
+      { id: "1d_committee", gri: "102-1-d", label: "거버넌스 구조", type: "radio",
+        options: ["이사회 산하 ESG위원회 있음", "이사회가 직접 심의 (별도 위원회 없음)", "수립 예정"],
+        hint: "중소기업 대부분은 '이사회 직접 심의' 선택" },
+      { id: "1d_desc", gri: "102-1-d", label: "거버넌스 서술", type: "textarea", rows: 4,
+        template: YC_TEMPLATES["1d_gov"] },
+      { id: "1e_integration", gri: "102-1-e", label: "사업 전략 통합", type: "textarea", rows: 3,
+        template: YC_TEMPLATES["1e_strategy"] },
+      { id: "1f_phaseout", gri: "102-1-f-ii", label: "화석연료 단계 폐지 목표", type: "textarea", rows: 2,
+        hint: "해당 없으면 '당사는 석탄·중유 등 폐지 대상 화석연료를 직접 사용하지 않음' 기재.",
+        placeholder: "해당 없음 또는: 2030년까지 보일러 LNG 의존도 -30%" },
+      { id: "1g_just_transition", gri: "102-1-g", label: "공정 전환 원칙", type: "textarea", rows: 3,
+        template: YC_TEMPLATES["1g_just"] },
+      { id: "1h_biodiversity", gri: "102-1-h-ii", label: "생물다양성 영향", type: "radio",
+        options: ["해당 없음 (사업 규모·특성상 유의미한 영향 없음)", "있음 (별도 서술)"] },
+      { id: "1i_lobby", gri: "102-1-i", label: "로비·공공정책 활동", type: "radio",
+        options: ["해당 없음 (직접적 공공정책 활동 없음)", "있음 (별도 서술)"] },
+      { id: "1i_associations", gri: "102-1-i", label: "소속 협회 (복수선택)", type: "checkbox",
+        options: ["대한상공회의소", "중소기업중앙회", "한국화학산업협회", "한국반도체산업협회", "기타"] },
+      { id: "1j_status", gri: "102-1-j", label: "전환 계획 수립 상태", type: "radio",
+        options: ["수립 완료", "수립 중", "미수립 (사유 있음)"] },
+    ]
+  },
+  "102-3": {
+    title: "공정한 전환 (Just Transition)",
+    desc: "저탄소 전환 과정에서 근로자·지역사회에 미치는 사회적 영향을 정량 공시. GRI 102 최대 신규 영역.",
+    fields: [
+      { id: "3a_new_hires", gri: "102-3-a", label: "신규 채용 (기후 대응 관련 직무)", type: "number", unit: "명",
+        hint: "없으면 0. 전기차 정비·ESG 담당 등 신설 직무만 포함." },
+      { id: "3b_layoffs", gri: "102-3-b", label: "해고 (고탄소 사업 축소 관련)", type: "number", unit: "명",
+        hint: "중소기업 대부분 0." },
+      { id: "3c_reassigned", gri: "102-3-c", label: "재배치된 직원 수", type: "number", unit: "명",
+        hint: "직무 변경·부서 이동한 인원. 와이씨켐 v9 실적: 4명" },
+      { id: "3d_office", gri: "102-3-d", label: "└ 사무직", type: "number", unit: "명" },
+      { id: "3d_production", gri: "102-3-d", label: "└ 생산직", type: "number", unit: "명" },
+      { id: "3d_research", gri: "102-3-d", label: "└ 연구직", type: "number", unit: "명" },
+      { id: "3e_training_people", gri: "102-3-e", label: "재교육 이수자", type: "number", unit: "명",
+        hint: "와이씨켐 v9: 4명" },
+      { id: "3e_training_hours", gri: "102-3-e", label: "총 교육 시간", type: "number", unit: "시간",
+        hint: "와이씨켐 v9: 72시간" },
+      { id: "3e_completion", gri: "102-3-e", label: "참여율", type: "number", unit: "%",
+        hint: "와이씨켐 v9: 100%" },
+      { id: "3g_living_wage", gri: "102-3-g", label: "생활임금 이상 받는 직원 비율", type: "number", unit: "%",
+        hint: "해당 지역 기본 생활 수준 이상 급여를 받는 직원 비율. 100이면 전원." },
+      { id: "3_narrative", gri: "102-3", label: "공정전환 종합 서술", type: "textarea", rows: 4,
+        template: YC_TEMPLATES["3_just"] },
+    ]
+  },
+  "102-4": {
+    title: "온실가스 배출 감축 목표 및 이행",
+    desc: "Scope 1·2·3별 단기·중기·장기 감축 목표와 진척 상황.",
+    fields: [
+      { id: "4_period_option", gri: "102-4-a", label: "시간 범주 방식", type: "radio",
+        options: ["옵션 1 (장기형): 단기 5-10년 / 중기 10-15년 / 장기 20-30년",
+                  "옵션 2 (단기형): 단기 1-2년 / 중기 3-5년 / 장기 10년 ← 중소기업 권장"] },
+      { id: "4_base_year", gri: "102-4-h", label: "기준연도", type: "number", unit: "년",
+        hint: "예: 2024" },
+      { id: "4_base_year_emission", gri: "102-4-h-ii", label: "기준연도 배출량 (Scope 1+2)", type: "number", unit: "tCO₂eq" },
+      { id: "4_target_short", gri: "102-4-a", label: "단기 목표 (연간 감축률)", type: "number", unit: "%/년",
+        hint: "와이씨켐 v9: 1.5%/년. 중소기업 현실: 1~3%/년." },
+      { id: "4_target_mid", gri: "102-4-a", label: "중기 목표 (누적 감축률)", type: "number", unit: "%",
+        hint: "예: 2029년까지 10% 감축" },
+      { id: "4_target_long", gri: "102-4-a", label: "장기 목표 (누적 감축률)", type: "number", unit: "%",
+        hint: "예: 2030년 이후 20% 감축" },
+      { id: "4_scope2_method", gri: "102-4-c", label: "Scope 2 방법론", type: "radio",
+        options: ["위치 기반 (Location-based) ← 중소기업 기본",
+                  "시장 기반 (Market-based) - PPA·REC 조달 시"] },
+      { id: "4c_gases", gri: "102-4-e", label: "포함 가스", type: "checkbox",
+        options: ["CO₂", "CH₄", "N₂O", "HFCs", "PFCs", "SF₆", "NF₃"],
+        hint: "중소기업 표준: CO₂ + CH₄ + N₂O" },
+      { id: "4f_sbti", gri: "102-4-f", label: "SBTi 검증 여부", type: "radio",
+        options: ["검증 완료", "검증 신청 중", "단계적 도입 예정 ← 중소기업 기본", "해당 없음"] },
+      { id: "4k_methodology", gri: "102-4-k", label: "사용 기준·방법론", type: "checkbox",
+        options: ["GHG Protocol", "IPCC 2006 가이드라인", "환경부고시 제2024-155호 배출계수", "GWP AR5 (CH₄=28, N₂O=265)"] },
+      { id: "4_narrative", gri: "102-4", label: "감축 목표 종합 서술", type: "textarea", rows: 4,
+        template: YC_TEMPLATES["4_target"] },
+    ]
+  },
+  "102-2": {
+    title: "기후변화 적응 계획",
+    desc: "기후변화 물리적 위험(폭염·홍수·태풍·정전 등)에 대비한 조직의 전략.",
+    fields: [
+      { id: "2a_risks", gri: "102-2-a", label: "식별된 물리적 위험 (복수선택)", type: "checkbox",
+        options: ["폭염 (근무환경·전력수요)", "폭우·홍수 (시설 침수)", "태풍 (시설 파손)", 
+                  "정전 (공급 불안정) ← 와이씨켐 대표", "가뭄 (용수 부족)", "산불", "기타"] },
+      { id: "2b_actions", gri: "102-2-b-i", label: "적응 조치", type: "textarea", rows: 3,
+        placeholder: "예: 발전기 보유, 배수시설 정기 점검, 냉방 강화, 공급업체 다변화",
+        template: "당사는 식별된 물리적 리스크에 대응하기 위해 정기적인 설비 점검과 비상 대응 체계를 운영하고 있습니다. 환경안전부는 리스크 대응 현황을 종합적으로 모니터링하며, 경영진의 정기 점검 주기에 맞춰 보고함으로써 리스크 관리의 실행력을 확보하고 있습니다." },
+      { id: "2c_capex", gri: "102-2-b-iii", label: "적응 관련 지출 (CapEx)", type: "number", unit: "백만원" },
+      { id: "2c_opex", gri: "102-2-b-iii", label: "적응 관련 지출 (OpEx)", type: "number", unit: "백만원" },
+      { id: "2d_gov", gri: "102-2-b-iv", label: "감독 거버넌스", type: "textarea", rows: 2,
+        template: "이사회가 적응 계획 관련 중요 사안을 직접 심의하며, 환경안전부가 실무 모니터링을 수행합니다." },
+      { id: "2e_targets", gri: "102-2-b-v", label: "적응 목표", type: "textarea", rows: 2,
+        placeholder: "예: 연 1회 전 시설 점검, 비상 대응 교육 100% 이수" },
+    ]
+  },
+  "102-9": {
+    title: "가치사슬 외부 온실가스 제거 활동",
+    desc: "조림·재조림·CCUS·바이오차 등 직접 수행한 제거 활동. 중소기업 대부분 '해당 없음'.",
+    fields: [
+      { id: "9_status", gri: "102-9-a", label: "제거 활동 유무", type: "radio",
+        options: ["해당 없음 (직접 수행 제거 활동 없음) ← 중소기업 기본", "있음 (별도 서술)"] },
+      { id: "9_type", gri: "102-9-b", label: "활동 유형 (있는 경우만)", type: "checkbox",
+        options: ["조림·재조림", "CCUS", "바이오차", "기타"] },
+      { id: "9_volume", gri: "102-9-c", label: "제거량 (있는 경우만)", type: "number", unit: "tCO₂e" },
+    ]
+  },
+  "102-10": {
+    title: "탄소 크레딧 사용",
+    desc: "취득한 탄소 크레딧. 중소기업 대부분 '해당 없음'.",
+    fields: [
+      { id: "10_status", gri: "102-10-a", label: "크레딧 취득 유무", type: "radio",
+        options: ["해당 없음 (크레딧 취득·사용 없음) ← 중소기업 기본", "있음 (별도 서술)"] },
+      { id: "10_volume", gri: "102-10-a", label: "취득 총량", type: "number", unit: "tCO₂e" },
+      { id: "10_standard", gri: "102-10-c", label: "품질 기준", type: "checkbox",
+        options: ["Gold Standard", "VCS (Verra)", "CDM", "기타"] },
+      { id: "10_purpose", gri: "102-10-d", label: "용도", type: "radio",
+        options: ["상쇄 (Offsetting)", "기여 (Contribution)", "해당 없음"] },
+    ]
+  },
+};
+
+// Sub-field 입력 컴포넌트 (단일 필드)
+function SubField({ field, value, onChange, disabled }) {
+  const [showTpl, setShowTpl] = useState(false);
+  const handleType = (v) => onChange({ ...value, v });
+  
+  const renderInput = () => {
+    if (field.type === "textarea") {
+      return (
+        <textarea
+          value={value?.v || ""}
+          onChange={e => handleType(e.target.value)}
+          disabled={disabled}
+          rows={field.rows || 3}
+          placeholder={field.placeholder || field.hint || ""}
+          style={{
+            width: "100%", padding: "12px 14px", borderRadius: 8,
+            border: `1px solid ${T.g200}`, fontSize: 14, lineHeight: 1.6,
+            fontFamily: "inherit", resize: "vertical",
+            background: disabled ? T.g50 : T.white, color: T.g800
+          }}
+        />
+      );
+    }
+    if (field.type === "number") {
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="number" value={value?.v || ""}
+            onChange={e => handleType(e.target.value)}
+            disabled={disabled}
+            placeholder="숫자 입력"
+            style={{
+              flex: 1, padding: "10px 12px", borderRadius: 8,
+              border: `1px solid ${T.g200}`, fontSize: 14,
+              background: disabled ? T.g50 : T.white, textAlign: "right"
+            }}
+          />
+          <span style={{ fontSize: 13, color: T.g500, fontWeight: 500 }}>{field.unit}</span>
+        </div>
+      );
+    }
+    if (field.type === "radio") {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {field.options.map((opt, i) => (
+            <label key={i} style={{
+              display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 12px",
+              border: `1px solid ${value?.v === opt ? T.emerald : T.g200}`,
+              borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer",
+              background: value?.v === opt ? T.emeraldBg : T.white,
+              fontSize: 13, lineHeight: 1.5
+            }}>
+              <input type="radio" name={field.id} value={opt}
+                checked={value?.v === opt}
+                onChange={e => handleType(e.target.value)}
+                disabled={disabled}
+                style={{ marginTop: 2 }}/>
+              <span style={{ color: T.g700, flex: 1 }}>{opt}</span>
+            </label>
+          ))}
+        </div>
+      );
+    }
+    if (field.type === "checkbox") {
+      const selected = value?.v || [];
+      const toggle = (opt) => {
+        const next = selected.includes(opt) ? selected.filter(x => x !== opt) : [...selected, opt];
+        handleType(next);
+      };
+      return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {field.options.map((opt, i) => (
+            <label key={i} style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "6px 10px",
+              border: `1px solid ${selected.includes(opt) ? T.emerald : T.g200}`,
+              borderRadius: 6, cursor: disabled ? "not-allowed" : "pointer",
+              background: selected.includes(opt) ? T.emeraldBg : T.white,
+              fontSize: 12
+            }}>
+              <input type="checkbox" checked={selected.includes(opt)}
+                onChange={() => toggle(opt)} disabled={disabled}/>
+              <span style={{ color: T.g700 }}>{opt}</span>
+            </label>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+  
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: T.emerald,
+          background: T.emeraldBg, padding: "2px 6px", borderRadius: 4
+        }}>{field.gri}</span>
+        <label style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>{field.label}</label>
+        {field.template && !disabled && (
+          <button onClick={() => {
+            handleType(field.template);
+            setShowTpl(false);
+          }} style={{
+            marginLeft: "auto", fontSize: 11, color: T.blue, background: T.blueBg,
+            border: "none", padding: "3px 8px", borderRadius: 4, cursor: "pointer", fontWeight: 500
+          }}>📝 예시 문구 채우기</button>
+        )}
+      </div>
+      {field.hint && (
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 8, lineHeight: 1.5 }}>💡 {field.hint}</p>
+      )}
+      {renderInput()}
+    </div>
+  );
+}
+
+// 기후변화 대응 대시보드 그래프 (Recharts)
+function ClimateGraphs({ scopeData, blockData }) {
+  const R = window.Recharts;
+  if (!R) return null;
+  const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = R;
+  
+  // Scope 1·2·3 배출량 계산
+  const s1Total = calcScope1Total(scopeData.s1);
+  const s2Kwh = scopeData.s2.yearly_val 
+    ? (scopeData.s2.input_type === "원" ? scopeData.s2.yearly_val / 165 : scopeData.s2.yearly_val)
+    : (scopeData.s2.monthly || []).reduce((a, b) => a + (parseFloat(b) || 0), 0);
+  const s2Total = (s2Kwh / 1000) * EFS2;
+  const s3Total = S3.reduce((sum, c) => {
+    if (c.id === "c7") {
+      const d = scopeData.s3.commute || {};
+      return sum + ((d.people||0) * (d.distance||0) * 250 * 0.17 / 1000);
+    }
+    return sum + (scopeData.s3[c.id] || 0) * (c.ef || 0);
+  }, 0);
+  
+  // 1. Scope 1·2·3 비교 바차트
+  const scopeData123 = [
+    { name: "Scope 1", value: +s1Total.toFixed(2), fill: T.rose },
+    { name: "Scope 2", value: +s2Total.toFixed(2), fill: T.amber },
+    { name: "Scope 3", value: +s3Total.toFixed(2), fill: T.violet },
+  ];
+  
+  // 2. Scope 1 내부 breakdown (고정 vs 이동)
+  const stationaryTotal = SF.reduce((sum, f) => {
+    const amt = parseFloat(scopeData.s1[f.id]) || 0;
+    if (!amt) return sum;
+    const unit = scopeData.s1[f.id + "_unit"] || f.baseUnit;
+    const conv = (f.units || []).find(u => u.key === unit);
+    const baseAmt = conv ? amt * conv.factor : amt;
+    return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
+  }, 0);
+  const mobileTotal = MF.reduce((sum, f) => {
+    const amt = parseFloat(scopeData.s1[f.id]) || 0;
+    if (!amt) return sum;
+    const unit = scopeData.s1[f.id + "_unit"] || f.baseUnit;
+    const conv = (f.units || []).find(u => u.key === unit);
+    const baseAmt = conv ? amt * conv.factor : amt;
+    return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
+  }, 0);
+  
+  const s1Breakdown = [];
+  if (stationaryTotal > 0) s1Breakdown.push({ name: "고정연소", value: +stationaryTotal.toFixed(2), fill: T.blue });
+  if (mobileTotal > 0) s1Breakdown.push({ name: "이동연소", value: +mobileTotal.toFixed(2), fill: T.indigo });
+  
+  // 3. 감축 목표 진척
+  const baseYearEmission = parseFloat(blockData["_102_sub"]?.["4_base_year_emission"]?.v) || (s1Total + s2Total);
+  const currentEmission = s1Total + s2Total;
+  const targetAnnual = parseFloat(blockData["_102_sub"]?.["4_target_short"]?.v) || 1.5;
+  const targetEmission = baseYearEmission * (1 - targetAnnual/100);
+  const progress = baseYearEmission > 0 ? Math.max(0, Math.min(100, ((baseYearEmission - currentEmission) / (baseYearEmission - targetEmission)) * 100)) : 0;
+  
+  const total = s1Total + s2Total + s3Total;
+  if (total < 0.01) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", background: T.g50, borderRadius: 12, color: T.g500 }}>
+        💡 Scope 1/2/3 배출량 데이터를 입력하면 그래프가 실시간으로 표시됩니다.
+      </div>
+    );
+  }
+  
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      {/* 그래프 1: Scope 1·2·3 비교 */}
+      <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>Scope 1·2·3 배출량</h4>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: tCO₂eq · GRI 102-5/6/7</p>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={scopeData123}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.g200}/>
+            <XAxis dataKey="name" tick={{fontSize: 12}}/>
+            <YAxis tick={{fontSize: 12}}/>
+            <Tooltip/>
+            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+              {scopeData123.map((e, i) => <Cell key={i} fill={e.fill}/>)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      
+      {/* 그래프 2: Scope 1 breakdown */}
+      <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>Scope 1 배출원</h4>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>고정연소 vs 이동연소</p>
+        {s1Breakdown.length > 0 ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={s1Breakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" label={(e) => `${e.name}: ${e.value}t`}>
+                {s1Breakdown.map((e, i) => <Cell key={i} fill={e.fill}/>)}
+              </Pie>
+              <Tooltip/>
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ padding: 40, textAlign: "center", color: T.g400, fontSize: 12 }}>Scope 1 데이터 없음</div>
+        )}
+      </div>
+      
+      {/* 그래프 3: 감축 목표 진척 게이지 */}
+      <div style={{ gridColumn: "1 / -1", background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+        <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>감축 목표 진척률</h4>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>
+          기준연도 배출량: {baseYearEmission.toFixed(1)} tCO₂eq · 연간 목표: -{targetAnnual}% · GRI 102-4-i
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={{ flex: 1, background: T.g100, borderRadius: 999, height: 30, overflow: "hidden", position: "relative" }}>
+            <div style={{
+              background: progress >= 80 ? T.emerald : progress >= 50 ? T.amber : T.rose,
+              height: "100%", width: `${progress}%`, borderRadius: 999, transition: "width 0.4s"
+            }}/>
+            <span style={{
+              position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+              fontSize: 12, fontWeight: 700, color: T.white, mixBlendMode: "difference"
+            }}>{progress.toFixed(0)}%</span>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.g800, minWidth: 120, textAlign: "right" }}>
+            현재: {currentEmission.toFixed(1)} tCO₂eq
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function calcScope1Total(s1) {
+  return [...SF, ...MF].reduce((sum, f) => {
+    const amt = parseFloat(s1[f.id]) || 0;
+    if (!amt) return sum;
+    const unit = s1[f.id + "_unit"] || f.baseUnit;
+    const conv = (f.units || []).find(u => u.key === unit);
+    const baseAmt = conv ? amt * conv.factor : amt;
+    return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
+  }, 0);
+}
+
+// GRI 102 고급 입력 페이지 (서술 공시 sub-block 렌더)
+function GRI102AdvancedPanel({ disclosureCode, blockData, setBlockData, disabled }) {
+  const disclosure = GRI102_FIELDS[disclosureCode];
+  if (!disclosure) return null;
+  
+  const storedKey = "_102_sub";
+  const stored = blockData[storedKey] || {};
+  
+  const updateField = (fid, v) => {
+    const next = { ...stored, [fid]: v };
+    setBlockData(storedKey, { content_json: next });
+  };
+  
+  const filledCount = disclosure.fields.filter(f => {
+    const v = stored[f.id]?.v;
+    if (Array.isArray(v)) return v.length > 0;
+    return v && String(v).trim().length > 0;
+  }).length;
+  const progress = Math.round((filledCount / disclosure.fields.length) * 100);
+  
+  return (
+    <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 24, marginBottom: 20 }}>
+      <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${T.g100}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.emerald, padding: "3px 10px", borderRadius: 4 }}>
+            공시 {disclosureCode}
+          </span>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: T.g900 }}>{disclosure.title}</h3>
+          <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: progress >= 80 ? T.emerald : progress >= 40 ? T.amber : T.rose }}>
+            {filledCount}/{disclosure.fields.length} · {progress}%
+          </span>
+        </div>
+        <p style={{ fontSize: 13, color: T.g500, lineHeight: 1.6 }}>{disclosure.desc}</p>
+      </div>
+      
+      {disclosure.fields.map(field => (
+        <SubField key={field.id} field={field} 
+          value={stored[field.id]} 
+          onChange={v => updateField(field.id, v)}
+          disabled={disabled}/>
+      ))}
+    </div>
+  );
+}
+
+
 function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS1, setS2, setS3, ud, isAdmin, griMap, vsmeMap }) {
   const [exOpen, setExOpen] = useState({});
   const [otherOpen, setOtherOpen] = useState(false);
@@ -1471,12 +1932,41 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
         <p style={{ fontSize: 14, color: T.g500 }}>{standard.description}</p>
       </div>
 
+      {/* 🌡️ GRI 102일 때 그래프 대시보드 표시 */}
+      {standard.code === "102" && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.blue, padding: "3px 8px", borderRadius: 4 }}>📊 실시간</span>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: T.g800 }}>기후변화 대응 현황</h3>
+            <span style={{ fontSize: 11, color: T.g400 }}>Scope 데이터 입력 시 자동 업데이트</span>
+          </div>
+          <ClimateGraphs scopeData={scopeData} blockData={blockData}/>
+        </div>
+      )}
+
       {ud !== "all" && myBlocks.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 12, fontWeight: 600, color: T.g500, marginBottom: 12, letterSpacing: "0.04em" }}>내 담당 항목 ({myBlocks.length})</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {myBlocks.map(b => renderBlock(b, true))}
           </div>
+        </div>
+      )}
+
+      {/* 🌡️ GRI 102일 때 서술 공시 sub-block 패널 7개 */}
+      {standard.code === "102" && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.violet, padding: "3px 8px", borderRadius: 4 }}>📝 서술 공시</span>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: T.g800 }}>전환계획·적응계획·공정전환 등</h3>
+            <span style={{ fontSize: 11, color: T.g400 }}>GRI 102-1 ~ 102-4, 102-9, 102-10</span>
+          </div>
+          <GRI102AdvancedPanel disclosureCode="102-1" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env") && !ce("mgmt")}/>
+          <GRI102AdvancedPanel disclosureCode="102-2" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env") && !ce("fac")}/>
+          <GRI102AdvancedPanel disclosureCode="102-3" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("mgmt") && !ce("admin")}/>
+          <GRI102AdvancedPanel disclosureCode="102-4" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env")}/>
+          <GRI102AdvancedPanel disclosureCode="102-9" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env")}/>
+          <GRI102AdvancedPanel disclosureCode="102-10" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("mgmt")}/>
         </div>
       )}
 
