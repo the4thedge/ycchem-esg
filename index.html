@@ -1338,7 +1338,428 @@ function TableInput({ value, onChange, disabled }) {
 // 공시별 sub-block + 와이씨켐 v9 자동 템플릿 + 실시간 그래프
 // ═══════════════════════════════════════════════════════════════════════
 
-// 와이씨켐 v9 실전 문구 자동 템플릿 (중소기업 참조용)
+// ═══════════════════════════════════════════════════════════════════════
+// 🎓 용어집 — 중소기업 담당자가 모를 만한 단어 전부
+// ═══════════════════════════════════════════════════════════════════════
+const GLOSSARY = {
+  "IPCC_AR6": {
+    title: "IPCC AR6 (6차 평가보고서)",
+    body: "IPCC는 UN 산하 기후변화 과학기구입니다. AR6는 2021~2023년 발표된 최신 평가보고서.\n\n쉽게 말하면: 전 세계 과학자들이 '이대로 가면 지구가 얼마나 더워질지' 정리한 가장 권위 있는 참고서.\n\n왜 필요?\nGRI 102-1-b가 '어떤 과학 근거로 감축 목표 세웠냐' 묻습니다. IPCC AR6를 선택하면 요건 자동 충족.\n\n👉 모르겠으면 이거 선택 권장.",
+  },
+  "IEA_NZE": {
+    title: "IEA Net Zero 2050",
+    body: "IEA는 국제에너지기구 (OECD 산하). Net Zero 2050은 2050년 탄소중립을 달성하는 에너지 전환 경로를 정리한 보고서.\n\n쉽게: 에너지 분야(전력·연료)에서 무엇을 언제까지 해야 2050년 Net Zero 가능한지 로드맵.\n\n쓰는 때: 전력·에너지 감축이 핵심인 제조업이 많이 참조.",
+  },
+  "NGFS": {
+    title: "NGFS 시나리오",
+    body: "NGFS = 녹색금융체계 중앙은행·감독기구 네트워크. 주로 금융권·투자자용 기후 시나리오.\n\n중소기업 실무에서는 거의 사용 안 함. 대기업·금융회사가 주 사용자.",
+  },
+  "SBTi": {
+    title: "SBTi (과학기반 감축목표 이니셔티브)",
+    body: "Science Based Targets initiative. 기업 감축 목표가 '정말로 1.5°C 경로에 부합하는지' 과학적으로 검증해주는 국제 기구.\n\n검증받으면 '과학 기반 목표 보유' 인증. 대기업은 대부분 검증 받음.\n\n중소기업에는?\n검증 과정 복잡·비용 들어 대부분 검증 안 받음. 'SBTi 도입 단계적 검토' 수준이 현실적.",
+  },
+  "SCOPE1": {
+    title: "Scope 1 (직접 배출)",
+    body: "우리 회사가 직접 연료를 태워서 발생하는 배출.\n\n예시:\n• 공장 보일러에서 LNG 태움\n• 회사 차량이 휘발유/경유 소비\n• 지게차·발전기 연료 소비\n\n측정: 연료 사용량 × 배출계수",
+  },
+  "SCOPE2": {
+    title: "Scope 2 (간접 배출 - 전력)",
+    body: "우리 회사가 쓰는 전기·열·스팀을 만들기 위해 발전소에서 발생한 배출.\n\n예시:\n• 한전에서 사 쓰는 전기\n• 지역난방공사에서 받는 스팀\n\n측정: 전력 사용량(kWh) × 전력 배출계수 (한국 2023년: 0.4173 tCO₂eq/MWh)",
+  },
+  "SCOPE3": {
+    title: "Scope 3 (가치사슬 배출)",
+    body: "우리 회사 밖에서 일어나는 배출. 원재료 생산·운송·폐기·출장 등.\n\n15개 카테고리 있음. 중소기업은 주로:\n• Cat.1 구매한 원재료\n• Cat.4 운송·물류\n• Cat.5 폐기물\n• Cat.6 출장\n\n측정: 금액 기반(Spend-based) 또는 공급사 데이터",
+  },
+  "CAPEX_OPEX": {
+    title: "CapEx / OpEx",
+    body: "CapEx (Capital Expenditure) = 자본적 지출\n→ 장기 사용 자산에 투자 (예: 보일러 교체, 전기차 구입, 설비 증설)\n\nOpEx (Operating Expenditure) = 운영비\n→ 일상 운영에 쓰는 비용 (예: 에너지 관리 SW 구독료, 교육비, 유지보수비)\n\n회계 재무제표에서:\n• CapEx = 유형자산 취득가\n• OpEx = 영업비용",
+  },
+  "LOCATION_MARKET": {
+    title: "위치 기반 vs 시장 기반 (Scope 2 방법론)",
+    body: "위치 기반 (Location-based)\n→ 내가 있는 지역 전력망의 평균 배출계수 적용. 한국은 0.4173 tCO₂eq/MWh.\n→ 대부분 중소기업이 사용하는 기본 방식.\n\n시장 기반 (Market-based)\n→ 내가 실제로 계약해서 조달한 전력 기준 (재생에너지 PPA, REC 구매 시 0으로 처리 가능).\n→ 재생에너지 조달 중소기업만 해당.\n\nGRI는 위치 기반 필수, 시장 기반은 해당자만.",
+  },
+  "GHG_PROTOCOL": {
+    title: "GHG Protocol",
+    body: "Greenhouse Gas Protocol. WRI·WBCSD가 만든 온실가스 산정 국제 표준.\n\n쉽게: 전 세계 기업이 배출량 계산할 때 가장 많이 쓰는 '계산 규칙서'.\n\nScope 1·2·3 개념도 이 문서에서 나왔음. GRI·ISSB·SBTi 모두 이 기준 사용.",
+  },
+  "IPCC_2006": {
+    title: "IPCC 2006 가이드라인",
+    body: "IPCC가 국가·기업용 온실가스 인벤토리 계산 방법을 정리한 공식 가이드라인.\n\n우리 회사가 연료 태웠을 때 CO₂·CH₄·N₂O 각각 얼마 나오는지 계산하는 식이 여기 있음.\n\n한국은 환경부고시 제2024-155호가 이 가이드라인을 기반으로 국내 배출계수 고시.",
+  },
+  "GWP": {
+    title: "GWP (지구온난화지수)",
+    body: "Global Warming Potential. 다른 온실가스가 CO₂보다 몇 배 더 온난화 유발하는지 지수.\n\nGWP AR5 기준 (100년):\n• CO₂ = 1\n• CH₄ = 28 (메탄)\n• N₂O = 265 (아산화질소)\n\n예: 메탄 1톤 = CO₂ 28톤으로 환산.",
+  },
+  "JUST_TRANSITION": {
+    title: "공정한 전환 (Just Transition)",
+    body: "저탄소 전환 과정에서 누구도 소외되지 않도록 하는 원칙.\n\n예시:\n• 고탄소 사업 축소 → 해고 없이 재배치·재교육\n• 일자리 감소 지역 → 새 산업·교육 지원\n\n지표:\n• 재교육 이수자·시간\n• 재배치 직원 수\n• 생활임금 받는 직원 비율",
+  },
+  "BIOGENIC_CO2": {
+    title: "생물기원 CO₂",
+    body: "식물·동물 등 생물체에서 나오는 CO₂ (나무 태우기, 바이오 연료 등).\n\n일반 화석연료 CO₂와 **별도로** 집계하는 게 원칙. 성장 중인 생물이 흡수했다가 배출하므로 '순환' 개념.\n\n중소기업: 바이오매스 연료 사용 안 하면 '해당 없음' 처리.",
+  },
+  "LIVING_WAGE": {
+    title: "생활임금 (Living Wage)",
+    body: "해당 지역에서 기본적인 생활(주거·식비·교통·교육)을 영위할 수 있는 최소 임금 수준.\n\n최저임금(법정)과 다름. 통상 최저임금보다 높음.\n\n한국은 공식 지정 없음. 서울·경기도 등 일부 지자체 '생활임금' 기준 존재.\n\n중소기업 실무: 전 직원이 최저임금 이상 = 일단 100% 표기 가능.",
+  },
+  "VALUE_CHAIN": {
+    title: "가치사슬 (Value Chain)",
+    body: "제품·서비스가 만들어지고 소비되기까지의 전 과정.\n\n상류 (Upstream): 원재료·부품·운송 → 우리 회사 앞단\n하류 (Downstream): 고객 사용·폐기 → 우리 회사 뒷단\n\nScope 3 공시가 바로 이 가치사슬 배출량.",
+  },
+  "TRANSITION_PLAN": {
+    title: "전환 계획 (Transition Plan, CTP)",
+    body: "우리 회사가 저탄소·탄소중립으로 어떻게 가겠다는 종합 전략.\n\n구성:\n• 정책 및 조치\n• 과학적 근거 (IPCC 등)\n• 투자 계획\n• 거버넌스\n• 감축 목표\n• 공정 전환\n• 이해관계자 영향\n\nGRI 102-1이 이걸 묻는 공시. 2027년부터 의무화.",
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🎓 용어 툴팁 컴포넌트
+// ═══════════════════════════════════════════════════════════════════════
+function GlossaryTooltip({ termKey, children }) {
+  const [open, setOpen] = useState(false);
+  const term = GLOSSARY[termKey];
+  if (!term) return <span>{children}</span>;
+  
+  return (
+    <>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {children}
+        <button onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+          style={{
+            border: "none", background: T.blueBg, color: T.blue,
+            width: 18, height: 18, borderRadius: "50%", fontSize: 11,
+            fontWeight: 700, cursor: "pointer", padding: 0, lineHeight: 1,
+            display: "inline-flex", alignItems: "center", justifyContent: "center"
+          }}
+          title={term.title}>?</button>
+      </span>
+      {open && (
+        <div onClick={() => setOpen(false)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+            zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20
+          }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{
+              background: T.white, borderRadius: 12, padding: 24,
+              maxWidth: 500, width: "100%", maxHeight: "80vh", overflowY: "auto",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
+            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <span style={{ fontSize: 20 }}>📘</span>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: T.g900, flex: 1 }}>{term.title}</h3>
+              <button onClick={() => setOpen(false)} style={{
+                border: "none", background: T.g100, color: T.g600,
+                width: 28, height: 28, borderRadius: "50%", fontSize: 14,
+                cursor: "pointer"
+              }}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, color: T.g700, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+              {term.body}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🎯 퀴즈 트리 — 102-1-a 정책 및 조치
+// ═══════════════════════════════════════════════════════════════════════
+const QUIZ_102_1a = {
+  title: "102-1-a · 전환 계획 정책 및 조치",
+  intro: "4개 질문에 답하시면 GRI 102 요구사항에 맞는 서술문이 자동 완성됩니다. 잘 모르겠는 용어는 옆의 '?' 버튼을 누르세요.",
+  steps: [
+    {
+      id: "industry",
+      question: "우리 회사 업종은 어떤 유형에 가까운가요?",
+      hint: "가장 가까운 하나를 선택하세요. 정확하지 않아도 괜찮습니다.",
+      type: "single",
+      options: [
+        { key: "chem", label: "화학 제조업", desc: "반응·혼합·정제 공정 중심" },
+        { key: "semi", label: "반도체/전자 제조업", desc: "클린룸·유틸리티 전력 소비 높음" },
+        { key: "metal", label: "기계/금속 가공업", desc: "가열·성형·용접 공정" },
+        { key: "etc", label: "기타 제조업", desc: "플라스틱·포장·일반 제조 등" },
+      ]
+    },
+    {
+      id: "focus",
+      question: "감축 활동의 주된 중심은 어디인가요?",
+      hint: "우리 회사가 실제로 힘을 쓰고 있는 영역을 선택하세요.",
+      type: "single",
+      options: [
+        { key: "facility", label: "설비·공정 효율화", desc: "노후 설비 교체, 공정 최적화" },
+        { key: "vehicle", label: "차량·물류 전환", desc: "업무용 차량 친환경 전환" },
+        { key: "energy", label: "에너지 조달 전환", desc: "재생에너지·PPA·REC" },
+        { key: "mixed", label: "여러 영역 혼합", desc: "설비 + 차량 등 복합 추진" },
+      ]
+    },
+    {
+      id: "actions",
+      question: "실제로 진행 중이거나 계획 중인 활동을 모두 선택하세요.",
+      hint: "2~4개 선택 권장. 안 하는 건 빼세요.",
+      type: "multi",
+      options: [
+        { key: "oldfac", label: "노후 설비 단계적 교체" },
+        { key: "ev", label: "업무용 차량 친환경차 전환" },
+        { key: "led", label: "LED 조명 전환" },
+        { key: "campaign", label: "사내 에너지 절약 캠페인" },
+        { key: "monitor", label: "에너지 사용 모니터링 시스템" },
+        { key: "supplier", label: "공급망 협력사 공동 감축" },
+        { key: "recycle", label: "폐열·폐기물 재활용" },
+        { key: "training", label: "임직원 환경 교육 정례화" },
+      ]
+    },
+    {
+      id: "governance",
+      question: "감축 활동을 담당하는 조직 형태는?",
+      hint: "대부분 중소기업은 '환경안전 부서 전담' 선택.",
+      type: "single",
+      options: [
+        { key: "dept", label: "환경안전 전담 부서 운영" },
+        { key: "committee", label: "경영진 참여 ESG 협의체 운영" },
+        { key: "dual", label: "전담 부서 + 경영진 협의체" },
+        { key: "none", label: "담당자 지정 (독립 조직 없음)" },
+      ]
+    },
+  ],
+  // 자동 조립 엔진
+  assemble: (ans) => {
+    const industry = {
+      chem: "화학 제조업",
+      semi: "반도체·전자 제조업",
+      metal: "기계·금속 가공업",
+      etc: "제조업"
+    }[ans.industry] || "제조업";
+    
+    const indChar = {
+      chem: "반응 공정과 유틸리티의 에너지 소비 비중이 높은",
+      semi: "클린룸 운영 및 유틸리티 전력 소비가 사업 활동의 근간을 이루는",
+      metal: "가열·성형 공정의 에너지 소비가 큰",
+      etc: "생산 설비 운영에 따른 에너지 소비가 발생하는"
+    }[ans.industry] || "생산 설비 운영에 따른 에너지 소비가 발생하는";
+    
+    const focus = {
+      facility: "설비 효율화 및 공정 운영 개선",
+      vehicle: "차량·물류의 친환경 전환",
+      energy: "재생에너지 조달 전환",
+      mixed: "설비·차량·에너지 조달 등 다면적 접근"
+    }[ans.focus] || "설비 효율화";
+    
+    const actionMap = {
+      oldfac: "노후 설비의 체계적 점검 및 단계적 교체",
+      ev: "업무용 차량의 친환경차(전기·하이브리드) 전환 확대",
+      led: "전 사업장 LED 조명 전환",
+      campaign: "사내 에너지 절약 캠페인 정례 운영",
+      monitor: "에너지 사용량 모니터링 체계 구축",
+      supplier: "공급망 협력사와의 공동 감축 과제 발굴",
+      recycle: "생산 공정의 폐열·폐기물 재활용",
+      training: "임직원 환경 교육 정례화"
+    };
+    const actions = (ans.actions || []).map(a => actionMap[a]).filter(Boolean);
+    const actionList = actions.length > 0 
+      ? actions.map((a, i) => `(${i+1}) ${a}`).join(", ")
+      : "에너지 효율 개선 활동";
+    
+    const gov = {
+      dept: "환경안전 전담 부서를 주관 조직으로 지정하여",
+      committee: "경영진이 참여하는 ESG 협의체를 통해",
+      dual: "환경안전 전담 부서와 경영진 협의체의 이중 체계로",
+      none: "지정 담당자를 중심으로"
+    }[ans.governance] || "환경안전 전담 부서를 주관 조직으로 지정하여";
+    
+    return `당사는 기후변화 대응을 핵심 경영 과제로 설정하고, 온실가스 감축을 전사적 목표로 추진하고 있습니다. ${industry} 특성상 ${indChar} 만큼, ${focus}를 중심으로 저감 활동을 단계적으로 확대하고 있습니다. 주요 정책은 다음과 같습니다. ${actionList}. 당사는 ${gov} 감축 과제의 이행 현황을 상시 점검하고 있으며, 이를 통해 기후 대응이 일회성 활동이 아닌 지속적 경영 활동의 일부로 내재화되도록 노력하고 있습니다.`;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🎯 퀴즈 레이어 컴포넌트 — 한 번에 질문 1개, 진행바, 뒤로/앞으로
+// ═══════════════════════════════════════════════════════════════════════
+function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
+  const [mode, setMode] = useState(savedText ? "saved" : "quiz"); // quiz | preview | saved | manual
+  const [stepIdx, setStepIdx] = useState(0);
+  const [answers, setAnswers] = useState(savedAnswers || {});
+  const [manualText, setManualText] = useState(savedText || "");
+  
+  const steps = quiz.steps;
+  const step = steps[stepIdx];
+  const progress = Math.round(((stepIdx + 1) / steps.length) * 100);
+  const canNext = step && (
+    step.type === "single" ? !!answers[step.id] :
+    step.type === "multi" ? (answers[step.id] || []).length > 0 : true
+  );
+  const isLast = stepIdx === steps.length - 1;
+  
+  // 저장된 답 보기 모드
+  if (mode === "saved") {
+    return (
+      <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}`, borderRadius: 10, padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 14 }}>✅</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.emerald }}>답변 완료</span>
+          {!disabled && (
+            <button onClick={() => { setMode("quiz"); setStepIdx(0); }}
+              style={{ marginLeft: "auto", fontSize: 11, color: T.blue, background: T.white, border: `1px solid ${T.blue}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
+              🔄 다시 풀기
+            </button>
+          )}
+          {!disabled && (
+            <button onClick={() => setMode("manual")}
+              style={{ fontSize: 11, color: T.g600, background: T.white, border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
+              ✏️ 직접 수정
+            </button>
+          )}
+        </div>
+        <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{savedText}</p>
+      </div>
+    );
+  }
+  
+  // 직접 수정 모드
+  if (mode === "manual") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.g600 }}>✏️ 직접 서술</span>
+          <button onClick={() => setMode(savedText ? "saved" : "quiz")}
+            style={{ marginLeft: "auto", fontSize: 11, color: T.g500, background: "none", border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
+            ← 취소
+          </button>
+        </div>
+        <textarea value={manualText} onChange={e => setManualText(e.target.value)}
+          disabled={disabled} rows={6}
+          style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1px solid ${T.g200}`, fontSize: 13, lineHeight: 1.7, fontFamily: "inherit", resize: "vertical" }}/>
+        <button onClick={() => { onSave({ answers, text: manualText }); setMode("saved"); }}
+          disabled={!manualText.trim()}
+          style={{ marginTop: 10, padding: "8px 16px", background: T.emerald, color: T.white, border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: manualText.trim() ? "pointer" : "not-allowed", opacity: manualText.trim() ? 1 : 0.5 }}>
+          💾 저장
+        </button>
+      </div>
+    );
+  }
+  
+  // 미리보기 모드
+  if (mode === "preview") {
+    const text = quiz.assemble(answers);
+    return (
+      <div>
+        <div style={{ background: T.violetBg, border: `1px solid ${T.violet}`, borderRadius: 10, padding: 16, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.violet, marginBottom: 8 }}>📝 자동 생성된 서술문 (미리보기)</div>
+          <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7 }}>{text}</p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => { onSave({ answers, text }); setMode("saved"); }}
+            disabled={disabled}
+            style={{ flex: 1, padding: "10px 16px", background: T.emerald, color: T.white, border: "none", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            ✅ 이대로 저장
+          </button>
+          <button onClick={() => setStepIdx(0)}
+            style={{ padding: "10px 16px", background: T.white, color: T.g600, border: `1px solid ${T.g300}`, borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
+            🔄 다시 풀기
+          </button>
+          <button onClick={() => { setManualText(text); setMode("manual"); }}
+            style={{ padding: "10px 16px", background: T.white, color: T.g600, border: `1px solid ${T.g300}`, borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
+            ✏️ 직접 수정
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // 퀴즈 모드
+  const select = (v) => {
+    setAnswers(prev => ({ ...prev, [step.id]: v }));
+  };
+  const toggleMulti = (key) => {
+    setAnswers(prev => {
+      const cur = prev[step.id] || [];
+      return { ...prev, [step.id]: cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key] };
+    });
+  };
+  
+  return (
+    <div>
+      {/* 진행바 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: T.g500 }}>{stepIdx + 1} / {steps.length}</span>
+        <div style={{ flex: 1, height: 6, background: T.g100, borderRadius: 999, overflow: "hidden" }}>
+          <div style={{ width: `${progress}%`, height: "100%", background: T.emerald, transition: "width 0.3s" }}/>
+        </div>
+      </div>
+      
+      {/* 질문 */}
+      <div style={{ marginBottom: 16 }}>
+        <h4 style={{ fontSize: 15, fontWeight: 700, color: T.g900, marginBottom: 6, lineHeight: 1.5 }}>
+          {step.question}
+        </h4>
+        {step.hint && (
+          <p style={{ fontSize: 12, color: T.g500, lineHeight: 1.6 }}>💡 {step.hint}</p>
+        )}
+      </div>
+      
+      {/* 선택지 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+        {step.options.map(opt => {
+          const selected = step.type === "single" 
+            ? answers[step.id] === opt.key
+            : (answers[step.id] || []).includes(opt.key);
+          return (
+            <button key={opt.key}
+              onClick={() => step.type === "single" ? select(opt.key) : toggleMulti(opt.key)}
+              disabled={disabled}
+              style={{
+                textAlign: "left", padding: "12px 14px",
+                background: selected ? T.emeraldBg : T.white,
+                border: `1.5px solid ${selected ? T.emerald : T.g200}`,
+                borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "flex-start", gap: 10,
+                transition: "all 0.15s"
+              }}>
+              <span style={{
+                width: 18, height: 18, flexShrink: 0,
+                borderRadius: step.type === "single" ? "50%" : 4,
+                border: `2px solid ${selected ? T.emerald : T.g300}`,
+                background: selected ? T.emerald : T.white,
+                marginTop: 2,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                color: T.white, fontSize: 11, fontWeight: 700
+              }}>{selected ? "✓" : ""}</span>
+              <span style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>{opt.label}</div>
+                {opt.desc && <div style={{ fontSize: 11, color: T.g500, marginTop: 2 }}>{opt.desc}</div>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      
+      {/* 네비게이션 */}
+      <div style={{ display: "flex", gap: 8 }}>
+        {stepIdx > 0 && (
+          <button onClick={() => setStepIdx(stepIdx - 1)}
+            style={{ padding: "10px 14px", background: T.white, color: T.g600, border: `1px solid ${T.g300}`, borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
+            ← 이전
+          </button>
+        )}
+        <button onClick={() => isLast ? setMode("preview") : setStepIdx(stepIdx + 1)}
+          disabled={!canNext}
+          style={{
+            flex: 1, padding: "10px 16px",
+            background: canNext ? T.emerald : T.g200, color: T.white,
+            border: "none", borderRadius: 6, fontSize: 14, fontWeight: 600,
+            cursor: canNext ? "pointer" : "not-allowed"
+          }}>
+          {isLast ? "📝 서술문 확인하기 →" : "다음 →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 일반 제조업 중소기업 기준 완성형 템플릿 (빈칸 없이 그대로 제출 가능)
+// 와이씨켐 v9 보고서 문체·구조를 참고하되 범용 중소기업 환경에 맞게 재구성
 const YC_TEMPLATES = {
   "1a_policy": "당사는 급변하는 기후 환경에 능동적으로 대응하기 위해 온실가스 감축을 전사적 경영 목표로 설정하였습니다. 전력 소비 비중이 높은 [업종]의 특성을 고려하여, 설비 가동 효율화와 에너지 집약도 개선을 중심으로 실질적인 탄소 저감 활동을 전개하고 있습니다. 주요 정책으로는 (1) 노후 설비의 단계적 효율 관리, (2) 운송 차량의 단계적 전기차 전환, (3) 사내 에너지 절약 캠페인 운영이 있습니다.",
   "1b_scenario": "당사는 IPCC 제6차 평가보고서(AR6)의 1.5°C 경로를 참고하여 감축 목표를 설정하였으며, GRI 102: 기후변화 2025 최신 가이드라인 기반으로 배출량 산정 및 검증 체계를 구축하였습니다. 향후 과학기반감축목표(SBTi) 방법론 도입 및 정합성 검증을 단계적으로 추진할 예정입니다.",
@@ -1355,18 +1776,22 @@ const GRI102_FIELDS = {
   "102-1": {
     title: "전환 계획 (기후변화 완화)",
     desc: "지구 온난화 1.5°C 제한을 위한 조직의 전반적 전략. 정책·조치·투자·책임성·목표를 포함.",
+    glossary: "TRANSITION_PLAN",
     fields: [
-      { id: "1a_policy", gri: "102-1-a", label: "정책 및 조치", type: "textarea", rows: 5,
-        hint: "에너지·토지이용·공급망·인권 관련 정책 2~3개 개요. 상세 설명 불필요.",
-        template: YC_TEMPLATES["1a_policy"], placeholder: "예: 에너지 절감 방침, 차량 전기차 전환, 설비 효율 개선..." },
+      { id: "1a_policy", gri: "102-1-a", label: "정책 및 조치", type: "quiz", quiz: "102-1a",
+        hint: "4개 질문에 답하시면 서술문이 자동 완성됩니다." },
       { id: "1b_scenario_source", gri: "102-1-b", label: "시나리오 출처", type: "checkbox",
+        glossary: "IPCC_AR6",
         options: ["IPCC AR6 (권장)", "IEA Net Zero 2050", "NGFS", "기타"],
         hint: "최소 1개 선택. 중소기업은 IPCC AR6만 체크해도 충분." },
       { id: "1b_scenario_desc", gri: "102-1-b", label: "방법론 서술", type: "textarea", rows: 3,
+        glossary: "GHG_PROTOCOL",
         template: YC_TEMPLATES["1b_scenario"] },
       { id: "1c_capex", gri: "102-1-c", label: "CapEx (자본적 지출)", type: "number", unit: "백만원",
+        glossary: "CAPEX_OPEX",
         hint: "전환계획 관련 설비·인프라 투자 금액" },
       { id: "1c_opex", gri: "102-1-c", label: "OpEx (운영비)", type: "number", unit: "백만원",
+        glossary: "CAPEX_OPEX",
         hint: "에너지 관리 시스템 운영비·교육비 등" },
       { id: "1c_revenue", gri: "102-1-c", label: "연간 총매출", type: "number", unit: "백만원",
         hint: "비율 자동 계산용. 매출이 비공개면 빈칸." },
@@ -1395,6 +1820,7 @@ const GRI102_FIELDS = {
   "102-3": {
     title: "공정한 전환 (Just Transition)",
     desc: "저탄소 전환 과정에서 근로자·지역사회에 미치는 사회적 영향을 정량 공시. GRI 102 최대 신규 영역.",
+    glossary: "JUST_TRANSITION",
     fields: [
       { id: "3a_new_hires", gri: "102-3-a", label: "신규 채용 (기후 대응 관련 직무)", type: "number", unit: "명",
         hint: "없으면 0. 전기차 정비·ESG 담당 등 신설 직무만 포함." },
@@ -1412,6 +1838,7 @@ const GRI102_FIELDS = {
       { id: "3e_completion", gri: "102-3-e", label: "참여율", type: "number", unit: "%",
         hint: "와이씨켐 v9: 100%" },
       { id: "3g_living_wage", gri: "102-3-g", label: "생활임금 이상 받는 직원 비율", type: "number", unit: "%",
+        glossary: "LIVING_WAGE",
         hint: "해당 지역 기본 생활 수준 이상 급여를 받는 직원 비율. 100이면 전원." },
       { id: "3_narrative", gri: "102-3", label: "공정전환 종합 서술", type: "textarea", rows: 4,
         template: YC_TEMPLATES["3_just"] },
@@ -1434,14 +1861,18 @@ const GRI102_FIELDS = {
       { id: "4_target_long", gri: "102-4-a", label: "장기 목표 (누적 감축률)", type: "number", unit: "%",
         hint: "예: 2030년 이후 20% 감축" },
       { id: "4_scope2_method", gri: "102-4-c", label: "Scope 2 방법론", type: "radio",
+        glossary: "LOCATION_MARKET",
         options: ["위치 기반 (Location-based) ← 중소기업 기본",
                   "시장 기반 (Market-based) - PPA·REC 조달 시"] },
       { id: "4c_gases", gri: "102-4-e", label: "포함 가스", type: "checkbox",
+        glossary: "GWP",
         options: ["CO₂", "CH₄", "N₂O", "HFCs", "PFCs", "SF₆", "NF₃"],
         hint: "중소기업 표준: CO₂ + CH₄ + N₂O" },
       { id: "4f_sbti", gri: "102-4-f", label: "SBTi 검증 여부", type: "radio",
+        glossary: "SBTi",
         options: ["검증 완료", "검증 신청 중", "단계적 도입 예정 ← 중소기업 기본", "해당 없음"] },
       { id: "4k_methodology", gri: "102-4-k", label: "사용 기준·방법론", type: "checkbox",
+        glossary: "IPCC_2006",
         options: ["GHG Protocol", "IPCC 2006 가이드라인", "환경부고시 제2024-155호 배출계수", "GWP AR5 (CH₄=28, N₂O=265)"] },
       { id: "4_narrative", gri: "102-4", label: "감축 목표 종합 서술", type: "textarea", rows: 4,
         template: YC_TEMPLATES["4_target"] },
@@ -1497,6 +1928,20 @@ function SubField({ field, value, onChange, disabled }) {
   const handleType = (v) => onChange({ ...value, v });
   
   const renderInput = () => {
+    if (field.type === "quiz") {
+      const quizMap = { "102-1a": QUIZ_102_1a };
+      const quiz = quizMap[field.quiz];
+      if (!quiz) return <div style={{ color: T.rose }}>퀴즈 '{field.quiz}' 미정의</div>;
+      return (
+        <QuizLayered 
+          quiz={quiz}
+          savedAnswers={value?.answers}
+          savedText={value?.v}
+          onSave={(result) => onChange({ answers: result.answers, v: result.text })}
+          disabled={disabled}
+        />
+      );
+    }
     if (field.type === "textarea") {
       return (
         <textarea
@@ -1588,8 +2033,12 @@ function SubField({ field, value, onChange, disabled }) {
           fontSize: 10, fontWeight: 700, color: T.emerald,
           background: T.emeraldBg, padding: "2px 6px", borderRadius: 4
         }}>{field.gri}</span>
-        <label style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>{field.label}</label>
-        {field.template && !disabled && (
+        <label style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>
+          {field.glossary ? (
+            <GlossaryTooltip termKey={field.glossary}>{field.label}</GlossaryTooltip>
+          ) : field.label}
+        </label>
+        {field.template && field.type !== "quiz" && !disabled && (
           <button onClick={() => {
             handleType(field.template);
             setShowTpl(false);
@@ -1773,7 +2222,11 @@ function GRI102AdvancedPanel({ disclosureCode, blockData, setBlockData, disabled
           <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.emerald, padding: "3px 10px", borderRadius: 4 }}>
             공시 {disclosureCode}
           </span>
-          <h3 style={{ fontSize: 17, fontWeight: 700, color: T.g900 }}>{disclosure.title}</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: T.g900 }}>
+            {disclosure.glossary ? (
+              <GlossaryTooltip termKey={disclosure.glossary}>{disclosure.title}</GlossaryTooltip>
+            ) : disclosure.title}
+          </h3>
           <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: progress >= 80 ? T.emerald : progress >= 40 ? T.amber : T.rose }}>
             {filledCount}/{disclosure.fields.length} · {progress}%
           </span>
