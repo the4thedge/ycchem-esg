@@ -7,6 +7,7 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -40,19 +41,74 @@ const USERS = {
   super: { id: "super", name: "곽종수", dept: "all", pw: "admin" },
 };
 
+// ═══════════════════════════════════════════
+// 법정 배출계수 · 순발열량 · GWP
+// 출처: 환경부고시 제2024-155호 [별표 12] + IPCC AR5 + GIR 2025.12 공표
+// ═══════════════════════════════════════════
+
+// 지구온난화지수 (IPCC AR5, 100-year)
+const GWP = { co2: 1, ch4: 28, n2o: 265 };
+
+// 전력 배출계수 (기후에너지환경부 2025.12.17 공표, 2023년 기준)
+const EFS2 = 0.4173; // tCO₂eq/MWh
+
+// 고정연소 연료 (환경부고시 [별표 12] 순발열량·배출계수)
+// ncv: 순발열량, 단위: MJ/기본단위
+// co2/ch4/n2o: kg/TJ
+// units: 담당자가 가진 자료 단위별 환산계수 (기본단위로 변환)
 const SF = [
-  { id: "lng", name: "LNG (도시가스)", u: "천Nm³", ncv: 43.98, co2: 56100, ch4: 5, n2o: 0.1, dept: "fac" },
-  { id: "lpg", name: "LPG (프로판)", u: "톤", ncv: 50.23, co2: 63100, ch4: 5, n2o: 0.1, dept: "fac" },
-  { id: "kero", name: "등유", u: "㎘", ncv: 34.76, co2: 71900, ch4: 10, n2o: 0.6, dept: "fac" },
-  { id: "diesel_b", name: "경유 (보일러)", u: "㎘", ncv: 35.29, co2: 74100, ch4: 10, n2o: 0.6, dept: "fac" },
-  { id: "bcoil", name: "B-C유", u: "㎘", ncv: 39.99, co2: 77400, ch4: 10, n2o: 0.6, dept: "fac" },
+  { id: "lng", name: "도시가스 (LNG)", baseUnit: "Nm³", ncv: 38.8, co2: 56100, ch4: 5, n2o: 0.1, dept: "fac",
+    units: [
+      { key: "Nm³", label: "Nm³ (고지서)", factor: 1, hint: "도시가스 고지서 '사용량' 칸" },
+      { key: "MJ",  label: "MJ (열량형 고지서)", factor: 1/38.8, hint: "열량형 고지서" },
+      { key: "천Nm³", label: "천Nm³", factor: 1000, hint: "대량 사용 시" },
+    ]},
+  { id: "lpg", name: "LPG (프로판)", baseUnit: "kg", ncv: 46.3, co2: 63100, ch4: 5, n2o: 0.1, dept: "fac",
+    units: [
+      { key: "kg", label: "kg (충전 영수증)", factor: 1, hint: "LPG 충전 시 kg 단위 청구" },
+      { key: "톤", label: "톤", factor: 1000, hint: "대량" },
+    ]},
+  { id: "kero", name: "등유", baseUnit: "ℓ", ncv: 34.5, co2: 71900, ch4: 10, n2o: 0.6, dept: "fac",
+    units: [
+      { key: "ℓ", label: "ℓ (리터)", factor: 1, hint: "주유 영수증" },
+      { key: "㎘", label: "㎘ (킬로리터)", factor: 1000, hint: "대량" },
+    ]},
+  { id: "diesel_b", name: "경유 (보일러)", baseUnit: "ℓ", ncv: 35.3, co2: 74100, ch4: 10, n2o: 0.6, dept: "fac",
+    units: [
+      { key: "ℓ", label: "ℓ (리터)", factor: 1, hint: "" },
+      { key: "㎘", label: "㎘", factor: 1000, hint: "" },
+    ]},
+  { id: "bcoil", name: "B-C유 (중유)", baseUnit: "ℓ", ncv: 39.6, co2: 77400, ch4: 10, n2o: 0.6, dept: "fac",
+    units: [
+      { key: "ℓ", label: "ℓ (리터)", factor: 1, hint: "" },
+      { key: "㎘", label: "㎘", factor: 1000, hint: "" },
+    ]},
 ];
+
+// 이동연소 연료 (2024년 평균 유가 참고값)
 const MF = [
-  { id: "gas", name: "휘발유", u: "㎘", ncv: 31.0, co2: 69300, ch4: 33, n2o: 3.2, dept: "admin" },
-  { id: "diesel_m", name: "경유 (차량)", u: "㎘", ncv: 35.29, co2: 74100, ch4: 3.9, n2o: 3.9, dept: "admin" },
-  { id: "lpg_m", name: "LPG (차량)", u: "㎘", ncv: 28.73, co2: 63100, ch4: 62, n2o: 0.2, dept: "admin" },
+  { id: "gas", name: "휘발유", baseUnit: "ℓ", ncv: 30.3, co2: 69300, ch4: 33, n2o: 3.2, dept: "admin",
+    units: [
+      { key: "ℓ", label: "ℓ (주유 영수증)", factor: 1, hint: "세금계산서 수량" },
+      { key: "원", label: "원 (법인카드)", factor: 1/1645, hint: "2024년 평균 유가 1,645원/ℓ" },
+      { key: "km", label: "km (운행일지)", factor: 1/11, hint: "평균 연비 11km/ℓ" },
+    ]},
+  { id: "diesel_m", name: "경유 (차량)", baseUnit: "ℓ", ncv: 35.3, co2: 74100, ch4: 3.9, n2o: 3.9, dept: "admin",
+    units: [
+      { key: "ℓ", label: "ℓ (주유 영수증)", factor: 1, hint: "" },
+      { key: "원", label: "원 (법인카드)", factor: 1/1490, hint: "2024년 평균 유가 1,490원/ℓ" },
+      { key: "km", label: "km (운행일지)", factor: 1/14, hint: "평균 연비 14km/ℓ" },
+    ]},
+  { id: "lpg_m", name: "LPG (차량)", baseUnit: "ℓ", ncv: 28.73, co2: 63100, ch4: 62, n2o: 0.2, dept: "admin",
+    units: [
+      { key: "ℓ", label: "ℓ (충전)", factor: 1, hint: "" },
+      { key: "원", label: "원", factor: 1/1080, hint: "2024년 평균 유가 1,080원/ℓ" },
+      { key: "km", label: "km (운행일지)", factor: 1/9, hint: "평균 연비 9km/ℓ" },
+    ]},
 ];
+
 const MO = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+
 const S3 = [
   { id: "c1", name: "구매 제품·서비스", c: "Cat.1", dept: "purch", ef: 1.1895 },
   { id: "c2", name: "자본재", c: "Cat.2", dept: "mgmt", ef: 0.7368 },
@@ -61,8 +117,17 @@ const S3 = [
   { id: "c6", name: "출장", c: "Cat.6", dept: "admin", ef: 0.8522 },
   { id: "c7", name: "직원 통근", c: "Cat.7", dept: "mgmt", ef: null },
 ];
-const EFS2 = 0.4594;
-const calc = (c,ncv,co2,ch4,n2o) => {if(!c)return{e:0,t:0,co2:0,ch4:0,n2o:0};const e=c*ncv/1000;return{e,co2:e*co2/1000,ch4:e*ch4/1000*25,n2o:e*n2o/1000*298,t:e*co2/1000+e*ch4/1000*25+e*n2o/1000*298};};
+
+// 연료 사용량(기본단위) → 배출량 (tCO₂eq)
+// 공식: 사용량 × NCV × EF × GWP / 10⁶
+const calc = (amt, ncv, co2EF, ch4EF, n2oEF) => {
+  if (!amt) return { e: 0, t: 0, co2: 0, ch4: 0, n2o: 0 };
+  const e = amt * ncv / 1000000; // TJ
+  const co2 = e * co2EF / 1000 * GWP.co2;
+  const ch4 = e * ch4EF / 1000 * GWP.ch4;
+  const n2o = e * n2oEF / 1000 * GWP.n2o;
+  return { e: e * 1000, co2, ch4, n2o, t: co2 + ch4 + n2o };
+};
 
 const globalCSS = `
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.min.css');
@@ -153,129 +218,1087 @@ function Login({ onLogin }) {
   );
 }
 
+// ═══════════════════════════════════════════
+// 공통 컴포넌트: 입력 방식 탭
+// ═══════════════════════════════════════════
+function InputTabs({ mode, onChange }) {
+  const tabs = [
+    { key: "yearly", label: "📅 연간 총량", hint: "전체 1년 합계만 입력" },
+    { key: "monthly", label: "📆 월별 입력", hint: "12개월 개별 입력" },
+    { key: "excel", label: "📊 엑셀 업로드", hint: "파일로 한 번에" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 0, marginBottom: 16, background: T.g100, padding: 3, borderRadius: 10 }}>
+      {tabs.map(t => (
+        <button key={t.key} onClick={() => onChange(t.key)}
+          style={{
+            flex: 1, padding: "9px 12px", borderRadius: 7, border: "none",
+            background: mode === t.key ? T.white : "transparent",
+            color: mode === t.key ? T.g900 : T.g500,
+            fontSize: 13, fontWeight: mode === t.key ? 600 : 500,
+            cursor: "pointer",
+            boxShadow: mode === t.key ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            transition: "all 0.15s"
+          }}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// 공통 컴포넌트: 엑셀 업로드
+// ═══════════════════════════════════════════
+function ExcelUpload({ templateName, expectedFormat, onParse, hint }) {
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setFileName(file.name);
+    setError("");
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: "array" });
+      const result = onParse(wb);
+      if (result.error) {
+        setError(result.error);
+        setPreview(null);
+      } else {
+        setPreview(result);
+      }
+    } catch (e) {
+      setError("파일 읽기 실패: " + e.message);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ padding: 16, background: T.g50, borderRadius: 10, marginBottom: 12 }}>
+        <p style={{ fontSize: 13, color: T.g600, lineHeight: 1.6, marginBottom: 8 }}>
+          <strong>📖 {hint || "자동 인식 가능 형식:"}</strong>
+        </p>
+        <p style={{ fontSize: 12, color: T.g500, lineHeight: 1.6 }}>{expectedFormat}</p>
+      </div>
+
+      <label style={{ display: "block" }}>
+        <div style={{
+          border: `2px dashed ${T.g300}`, borderRadius: 12, padding: "32px 20px",
+          textAlign: "center", cursor: "pointer", background: T.g50,
+          transition: "all 0.15s"
+        }}
+          onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = T.blueBg; e.currentTarget.style.borderColor = T.blue; }}
+          onDragLeave={e => { e.currentTarget.style.background = T.g50; e.currentTarget.style.borderColor = T.g300; }}
+          onDrop={e => {
+            e.preventDefault();
+            e.currentTarget.style.background = T.g50;
+            e.currentTarget.style.borderColor = T.g300;
+            if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+          }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📁</div>
+          <p style={{ fontSize: 14, fontWeight: 600, color: T.g700, marginBottom: 4 }}>
+            엑셀 파일을 여기에 드롭하거나 클릭해서 선택
+          </p>
+          <p style={{ fontSize: 12, color: T.g400 }}>.xlsx, .xls 지원</p>
+        </div>
+        <input type="file" accept=".xlsx,.xls" style={{ display: "none" }}
+          onChange={e => handleFile(e.target.files[0])} />
+      </label>
+
+      {fileName && !error && (
+        <p style={{ fontSize: 13, color: T.emerald, marginTop: 10 }}>
+          ✅ 파일: <strong>{fileName}</strong>
+        </p>
+      )}
+
+      {error && (
+        <div style={{ marginTop: 10, padding: 12, background: T.roseBg, borderRadius: 8, border: `1px solid ${T.rose}33` }}>
+          <p style={{ fontSize: 13, color: T.rose, fontWeight: 500 }}>⚠ {error}</p>
+          <p style={{ fontSize: 12, color: T.g500, marginTop: 4 }}>템플릿을 다운로드하여 양식에 맞춰 작성해주세요.</p>
+        </div>
+      )}
+
+      {preview && preview.preview && (
+        <div style={{ marginTop: 12, padding: 16, background: T.emeraldBg, borderRadius: 10, border: `1px solid ${T.emerald}33` }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: T.g800, marginBottom: 8 }}>
+            ✅ {preview.message}
+          </p>
+          <pre style={{ fontSize: 12, color: T.g600, background: T.white, padding: 10, borderRadius: 6, overflow: "auto", maxHeight: 200 }}>
+            {preview.preview}
+          </pre>
+          <button onClick={() => preview.apply()}
+            style={{ marginTop: 10, padding: "8px 18px", borderRadius: 6, border: "none",
+              background: T.emerald, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            적용하기
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// 공통 컴포넌트: 연료별 입력 행 (연간)
+// ═══════════════════════════════════════════
+function FuelRowYearly({ fuel, value, unitKey, onChange, onUnitChange, disabled, highlightEmpty }) {
+  const selectedUnit = (fuel.units || []).find(u => u.key === unitKey) || (fuel.units || [])[0];
+  const factor = selectedUnit?.factor || 1;
+  const baseAmt = (parseFloat(value) || 0) * factor;
+  const em = calc(baseAmt, fuel.ncv, fuel.co2, fuel.ch4, fuel.n2o);
+  const isEmpty = !value;
+  const highlight = highlightEmpty && isEmpty && !disabled;
+  
+  return (
+    <tr style={{ borderBottom: `1px solid ${T.g100}`, background: highlight ? '#fff5f5' : "transparent" }}>
+      <td style={{ padding: "12px 14px", fontWeight: 500, color: T.g800 }}>{fuel.name}</td>
+      <td style={{ padding: "8px 6px" }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input type="number" step="0.01" value={value || ""} disabled={disabled}
+            onChange={e => onChange(e.target.value)}
+            placeholder={highlight ? "입력 필요" : "0"}
+            style={{
+              flex: 1, padding: "8px 12px", borderRadius: 6,
+              border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+              background: disabled ? T.g50 : T.white, color: T.g900,
+              textAlign: "right", fontSize: 14, fontWeight: 600,
+              opacity: disabled ? 0.5 : 1, minWidth: 100
+            }} />
+          <select value={unitKey || selectedUnit?.key} disabled={disabled}
+            onChange={e => onUnitChange(e.target.value)}
+            style={{
+              padding: "8px 10px", borderRadius: 6, border: `1px solid ${T.g200}`,
+              background: T.white, fontSize: 13, color: T.g700, cursor: "pointer",
+              opacity: disabled ? 0.5 : 1
+            }}>
+            {(fuel.units || []).map(u => (
+              <option key={u.key} value={u.key}>{u.label}</option>
+            ))}
+          </select>
+        </div>
+        {selectedUnit?.hint && <p style={{ fontSize: 11, color: T.g400, marginTop: 4, paddingLeft: 2 }}>💡 {selectedUnit.hint}</p>}
+      </td>
+      <td style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, color: T.g500 }}>
+        {baseAmt > 0 ? `${baseAmt.toLocaleString(undefined,{maximumFractionDigits:1})} ${fuel.baseUnit}` : "-"}
+      </td>
+      <td style={{ padding: "12px 14px", textAlign: "right", color: T.g500, fontSize: 13 }}>
+        {em.e > 0 ? em.e.toFixed(3) : "-"}
+      </td>
+      <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>
+        {em.t > 0 ? em.t.toFixed(2) : "-"}
+      </td>
+    </tr>
+  );
+}
+
+// ═══════════════════════════════════════════
+// Scope 1 · 고정연소 + 이동연소
+// ═══════════════════════════════════════════
 function Scope1P({ data, set, ud }) {
-  const ce = d => ud==="all"||ud===d;
-  const Tbl = ({ title, fuels, dk }) => {
+  const [mode, setMode] = useState("yearly");
+  const [units, setUnits] = useState({});
+  const ce = d => ud === "all" || ud === d;
+
+  const setUnit = (fuelId, unitKey) => setUnits(p => ({ ...p, [fuelId]: unitKey }));
+
+  // data 구조: { lng: 450, lng_unit: "Nm³", lpg: 12, lpg_unit: "톤", ..., _monthly: { lng: [월1~12] } }
+  const getValue = (fuelId) => data[fuelId] || "";
+  const getUnit = (fuelId, fuel) => data[fuelId + "_unit"] || units[fuelId] || (fuel.units?.[0]?.key);
+
+  const renderYearlyTable = (title, fuels, dk) => {
     let sum = 0;
+    const visibleFuels = fuels.filter(f => ce(f.dept) || ud === "all" || true); // 다 보여주되 비담당은 disable
     return (
       <div style={{ marginBottom: 24 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-          <span style={{ fontSize:14, fontWeight:600, color:T.g800 }}>{title}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>{title}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: T.g400 }}>{DEPTS[dk].name}</span>
         </div>
         <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
-          <table style={{ width:"100%", fontSize:13, borderCollapse:"collapse" }}>
-            <thead><tr style={{ borderBottom:`1px solid ${T.g200}` }}>
-              {["연료","소비량","단위","에너지 (TJ)","합계 (tCO₂eq)"].map(h =>
-                <th key={h} style={{ padding:"12px 14px", textAlign: h==="연료"?"left":"right", fontSize:12, fontWeight:600, color:T.g500 }}>{h}</th>
-              )}
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+            <thead><tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+              <th style={{ padding: "12px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: T.g500 }}>연료</th>
+              <th style={{ padding: "12px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: T.g500, width: "40%" }}>입력값 + 단위 선택</th>
+              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>{`환산값 (${fuels[0]?.baseUnit || ""})`}</th>
+              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>에너지 (TJ)</th>
+              <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>배출량 (tCO₂eq)</th>
             </tr></thead>
-            <tbody>{fuels.map((f,i) => {
-              const em = calc(data[f.id]||0,f.ncv,f.co2,f.ch4,f.n2o); sum += em.t;
-              const canEdit = ce(f.dept);
-              const val = data[f.id] || "";
-              const needInput = canEdit && ud !== "all" && !val;
-              return <tr key={f.id} style={{ borderBottom: i < fuels.length-1 ? `1px solid ${T.g100}` : "none", background: needInput ? '#fff5f5' : "transparent" }}>
-                <td style={{ padding:"10px 14px", fontWeight:500, color:T.g800 }}>{f.name}</td>
-                <td style={{ padding:"6px 4px", textAlign:"right" }}>
-                  <input type="number" step="0.01" value={val} disabled={!canEdit} onChange={e => set(f.id,parseFloat(e.target.value)||0)}
-                    placeholder={needInput ? "입력 필요" : ""}
-                    style={{ width:100, padding:"7px 10px", borderRadius:6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: canEdit ? T.white : T.g50, color:T.g900, textAlign:"right", fontSize:14, fontWeight:600, opacity: canEdit ? 1 : 0.5 }} />
-                </td>
-                <td style={{ padding:"10px 14px", textAlign:"right", fontSize:12, color:T.g500 }}>{f.u}</td>
-                <td style={{ padding:"10px 14px", textAlign:"right", color:T.g500, fontSize:13 }}>{em.e.toFixed(2)}</td>
-                <td style={{ padding:"10px 14px", textAlign:"right", fontWeight:600, color:T.g900, fontFeatureSettings:"'tnum'" }}>{em.t.toFixed(2)}</td>
-              </tr>;
-            })}
-            <tr style={{ background:T.g50, borderTop:`1px solid ${T.g200}` }}>
-              <td colSpan="4" style={{ padding:"12px 14px", fontSize:13, fontWeight:600, color:T.g600, textAlign:"right" }}>소계</td>
-              <td style={{ padding:"12px 14px", textAlign:"right", fontWeight:700, fontSize:16, color:T.g900, fontFeatureSettings:"'tnum'" }}>{sum.toFixed(2)}</td>
-            </tr></tbody>
+            <tbody>
+              {fuels.map(f => {
+                const canEdit = ce(f.dept);
+                const val = getValue(f.id);
+                const uk = getUnit(f.id, f);
+                const unit = (f.units || []).find(u => u.key === uk) || (f.units || [])[0];
+                const baseAmt = (parseFloat(val) || 0) * (unit?.factor || 1);
+                sum += calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
+                return (
+                  <FuelRowYearly key={f.id} fuel={f}
+                    value={val} unitKey={uk}
+                    onChange={v => set(f.id, v)}
+                    onUnitChange={u => { setUnit(f.id, u); set(f.id + "_unit", u); }}
+                    disabled={!canEdit}
+                    highlightEmpty={ud !== "all"}
+                  />
+                );
+              })}
+              <tr style={{ background: T.g50, borderTop: `1px solid ${T.g200}` }}>
+                <td colSpan="4" style={{ padding: "12px 14px", fontSize: 13, fontWeight: 600, color: T.g600, textAlign: "right" }}>소계</td>
+                <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700, fontSize: 16, color: T.g900, fontFeatureSettings: "'tnum'" }}>{sum.toFixed(2)}</td>
+              </tr>
+            </tbody>
           </table>
         </div>
       </div>
     );
   };
+
+  const renderMonthlyTable = (title, fuels, dk) => {
+    return (
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>{title}</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: T.g400 }}>{DEPTS[dk].name}</span>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", padding: 16 }}>
+          {fuels.map(f => {
+            const canEdit = ce(f.dept);
+            const monthly = data["_monthly_" + f.id] || [];
+            const uk = getUnit(f.id, f);
+            const unit = (f.units || []).find(u => u.key === uk) || (f.units || [])[0];
+            let sum = 0;
+            return (
+              <div key={f.id} style={{ marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${T.g100}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>{f.name}</span>
+                  <select value={uk} disabled={!canEdit}
+                    onChange={e => set(f.id + "_unit", e.target.value)}
+                    style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.g200}`, background: T.white, fontSize: 12, color: T.g700 }}>
+                    {(f.units || []).map(u => <option key={u.key} value={u.key}>{u.key}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                  {MO.map((m, i) => {
+                    const v = monthly[i] || "";
+                    const highlight = canEdit && ud !== "all" && !v;
+                    sum += parseFloat(v) || 0;
+                    return (
+                      <div key={i}>
+                        <p style={{ fontSize: 11, color: T.g500, marginBottom: 3 }}>{m}</p>
+                        <input type="number" value={v} disabled={!canEdit}
+                          onChange={e => {
+                            const newMonthly = [...monthly]; newMonthly[i] = e.target.value;
+                            set("_monthly_" + f.id, newMonthly);
+                          }}
+                          style={{
+                            width: "100%", padding: "6px 8px", borderRadius: 5,
+                            border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+                            fontSize: 13, textAlign: "right", fontWeight: 500,
+                            background: canEdit ? T.white : T.g50, opacity: canEdit ? 1 : 0.5
+                          }} />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ marginTop: 8, textAlign: "right", fontSize: 12, color: T.g500 }}>
+                  연간 합계: <strong style={{ color: T.g800 }}>{sum.toLocaleString()}</strong> {uk}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const parseExcel = (wb) => {
+    try {
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 포맷 자동 감지 (3가지 실전 포맷 + 템플릿)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // 연료명 매칭 유틸
+      const matchFuel = (name) => {
+        if (!name) return null;
+        const n = String(name).toUpperCase();
+        if (n.includes("LNG") || n.includes("도시가스")) return SF.find(f => f.id === "lng");
+        if (n.includes("LPG") && (n.includes("차량") || n.includes("이동"))) return MF.find(f => f.id === "lpg_m");
+        if (n.includes("LPG") || n.includes("프로판")) return SF.find(f => f.id === "lpg");
+        if (n.includes("휘발유") || n.includes("GASOLINE")) return MF.find(f => f.id === "gas");
+        if (n.includes("경유") && (n.includes("보일러"))) return SF.find(f => f.id === "diesel_b");
+        if (n.includes("경유") || n.includes("디젤") || n.includes("DIESEL")) return MF.find(f => f.id === "diesel_m");
+        if (n.includes("등유") || n.includes("KEROSENE")) return SF.find(f => f.id === "kero");
+        if (n.includes("B-C") || n.includes("BC유") || n.includes("중유")) return SF.find(f => f.id === "bcoil");
+        return null;
+      };
+      
+      const matchUnit = (fuel, unitStr) => {
+        if (!fuel) return null;
+        const u = String(unitStr || "").trim();
+        return (fuel.units || []).find(opt => u.includes(opt.key) || opt.key.includes(u)) || fuel.units?.[0];
+      };
+
+      const parsed = [];
+      let formatDetected = "unknown";
+      
+      // ━━━ 포맷 A: 피티씨 타입 ━━━
+      // 시트명에 "활동도 입력" 또는 "활동도" 포함, R3~R9에 메타데이터, R10~ 월별
+      const sheetA = wb.SheetNames.find(n => n.includes("활동도") || n.includes("1 활동"));
+      if (sheetA) {
+        const ws = wb.Sheets[sheetA];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        
+        // 연도별 합계 행들 중에서 실제 데이터가 있는 가장 최근 연도 선택
+        const currentYear = new Date().getFullYear();
+        const candidateRows = [];
+        for (let i = 15; i < Math.min(150, rows.length); i++) {
+          const r = rows[i] || [];
+          const v = r[1];
+          const yr = parseInt(v);
+          if (!isNaN(yr) && yr >= 2020 && yr <= currentYear + 1 && String(v).trim() === String(yr)) {
+            // 해당 행에 유효 데이터 (금액 아닌 값) 있는지 확인
+            let hasData = false;
+            const unitRow = rows[8] || [];
+            for (let c = 2; c < r.length; c++) {
+              const val = parseFloat(r[c]);
+              const unit = String(unitRow[c] || "");
+              if (val > 0 && unit !== "원" && unit !== "천원") { hasData = true; break; }
+            }
+            if (hasData) candidateRows.push({ row: i, year: yr });
+          }
+        }
+        
+        const annualRow = candidateRows.length > 0 
+          ? candidateRows.reduce((max, c) => c.year > max.year ? c : max).row 
+          : -1;
+        
+        if (annualRow > 0) {
+          formatDetected = "피티씨 에너지·온실가스 인벤토리 Tool";
+          const fuelNameRow = rows[4] || [];
+          const unitRow = rows[8] || [];
+          const valRow = rows[annualRow] || [];
+          
+          for (let c = 2; c < valRow.length; c++) {
+            const fuelName = fuelNameRow[c];
+            const unit = unitRow[c];
+            const val = parseFloat(valRow[c]);
+            if (!val || !fuelName) continue;
+            if (unit && (String(unit).includes("원") && !String(unit).includes("Nm"))) continue;
+            // 전력은 Scope2에서 처리하므로 Scope1 파서에서는 skip
+            if (String(fuelName).includes("전력") || String(fuelName).includes("스팀")) continue;
+            
+            const fuel = matchFuel(fuelName);
+            if (!fuel) continue;
+            
+            const matchedUnit = matchUnit(fuel, unit);
+            const existing = parsed.find(p => p.fuelId === fuel.id);
+            if (existing) {
+              existing.amount += val;
+            } else {
+              parsed.push({ 
+                fuelId: fuel.id, 
+                fuelName: fuel.name, 
+                amount: val, 
+                unit: matchedUnit?.key || fuel.baseUnit,
+                source: `피티씨 타입 · ${String(rows[annualRow][1])}년`
+              });
+            }
+          }
+        }
+      }
+      
+      // ━━━ 포맷 B: 이원그린텍 / SK하이닉스 공급망 툴 ━━━
+      // 시트명에 "Scope1" 포함, 헤더에 "사업장 | 시설 | 연료명 | 활동자료 | 단위"
+      if (parsed.length === 0) {
+        const sheetB = wb.SheetNames.find(n => n.includes("Scope1") || n.includes("Scope 1") || n.includes("Scope1&2"));
+        if (sheetB) {
+          const ws = wb.Sheets[sheetB];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+          
+          // 헤더 행 찾기
+          let hdrRow = -1, fuelCol = -1, amtCol = -1, unitCol = -1, facCol = -1;
+          for (let i = 0; i < Math.min(15, rows.length); i++) {
+            const r = rows[i] || [];
+            for (let j = 0; j < r.length; j++) {
+              const cell = String(r[j] || "").trim();
+              if (cell === "연료명") { fuelCol = j; hdrRow = i; }
+              if (cell === "활동자료" || cell === "사용량") amtCol = j;
+              if (cell === "단위") unitCol = j;
+              if (cell === "배출시설" || cell === "시설") facCol = j;
+            }
+            if (fuelCol >= 0 && amtCol >= 0) break;
+          }
+          
+          if (hdrRow >= 0 && fuelCol >= 0 && amtCol >= 0) {
+            formatDetected = "이원그린텍 / SK하이닉스 공급망 툴 타입";
+            for (let i = hdrRow + 1; i < rows.length; i++) {
+              const r = rows[i] || [];
+              const fuelName = r[fuelCol];
+              const val = parseFloat(r[amtCol]);
+              if (!fuelName || !val) continue;
+              // "예시" 행은 스킵
+              const facName = facCol >= 0 ? String(r[facCol] || "") : "";
+              if (facName.includes("예)") || String(r[0] || "").includes("예시")) continue;
+              
+              const fuel = matchFuel(fuelName);
+              if (!fuel) continue;
+              const matchedUnit = matchUnit(fuel, r[unitCol]);
+              
+              const existing = parsed.find(p => p.fuelId === fuel.id);
+              if (existing) {
+                existing.amount += val;
+              } else {
+                parsed.push({
+                  fuelId: fuel.id,
+                  fuelName: fuel.name,
+                  amount: val,
+                  unit: matchedUnit?.key || fuel.baseUnit,
+                  source: "공급망 툴 타입"
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      // ━━━ 포맷 C: 우리 템플릿 / 범용 ━━━
+      if (parsed.length === 0) {
+        const sheetName = wb.SheetNames[0];
+        const sheet = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+        
+        let headerRow = -1;
+        let fuelCol = -1, amountCol = -1, unitCol = -1;
+        for (let i = 0; i < Math.min(10, rows.length); i++) {
+          const row = rows[i] || [];
+          for (let j = 0; j < row.length; j++) {
+            const cell = String(row[j] || "").trim();
+            if (cell.includes("연료") || cell.includes("품목")) { fuelCol = j; headerRow = i; }
+            if (cell.includes("사용") || cell.includes("소비") || cell.includes("수량") || cell === "량") amountCol = j;
+            if (cell.includes("단위")) unitCol = j;
+          }
+          if (headerRow >= 0 && amountCol >= 0) break;
+        }
+        
+        if (headerRow >= 0 && amountCol >= 0) {
+          formatDetected = "범용 템플릿";
+          for (let i = headerRow + 1; i < rows.length; i++) {
+            const row = rows[i] || [];
+            const name = String(row[fuelCol] || "").trim();
+            const amt = parseFloat(row[amountCol]);
+            if (!name || !amt) continue;
+            const fuel = matchFuel(name);
+            if (!fuel) continue;
+            const unitStr = unitCol >= 0 ? String(row[unitCol] || "").trim() : fuel.baseUnit;
+            const matchedUnit = matchUnit(fuel, unitStr);
+            parsed.push({ 
+              fuelId: fuel.id, 
+              fuelName: fuel.name, 
+              amount: amt, 
+              unit: matchedUnit?.key || fuel.baseUnit 
+            });
+          }
+        }
+      }
+      
+      if (parsed.length === 0) {
+        return { 
+          error: "인식 가능한 연료 데이터가 없습니다. 지원 포맷: ①피티씨 에너지 Tool, ②SK하이닉스 공급망 툴(이원그린텍 타입), ③연료·사용량 헤더가 있는 표준 엑셀" 
+        };
+      }
+      
+      return {
+        message: `✅ ${formatDetected} 인식 완료 (${parsed.length}개 연료)`,
+        preview: parsed.map(p => {
+          const baseUnit = [...SF, ...MF].find(f => f.id === p.fuelId)?.baseUnit;
+          return `• ${p.fuelName}: ${p.amount.toLocaleString(undefined, {maximumFractionDigits: 2})} ${p.unit}${p.source ? ` [${p.source}]` : ""}`;
+        }).join("\n"),
+        apply: () => {
+          parsed.forEach(p => {
+            set(p.fuelId, p.amount);
+            set(p.fuelId + "_unit", p.unit);
+          });
+        }
+      };
+    } catch (e) {
+      return { error: "엑셀 파싱 오류: " + e.message };
+    }
+  };
+
   return (
     <div>
-      <Tbl title="고정연소 (보일러·발전기)" fuels={SF} dk="fac"/>
-      <Tbl title="이동연소 (차량)" fuels={MF} dk="admin"/>
+      <InputTabs mode={mode} onChange={setMode}/>
+      
+      {mode === "yearly" && (
+        <div>
+          {renderYearlyTable("🔥 고정연소 (보일러·발전기·난방)", SF, "fac")}
+          {renderYearlyTable("🚗 이동연소 (업무 차량)", MF, "admin")}
+        </div>
+      )}
+      
+      {mode === "monthly" && (
+        <div>
+          {renderMonthlyTable("🔥 고정연소 (월별)", SF, "fac")}
+          {renderMonthlyTable("🚗 이동연소 (월별)", MF, "admin")}
+        </div>
+      )}
+      
+      {mode === "excel" && (
+        <ExcelUpload
+          hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
+          expectedFormat={"✅ 지원 포맷:\n① 피티씨 타입: 에너지·온실가스 인벤토리 Tool (SK하이닉스 협력사 표준)\n② 이원그린텍 타입: SK하이닉스 공급망 가치사슬 관리 툴\n③ 범용: 첫 행에 [연료] [사용량] [단위] 헤더가 있는 엑셀\n\n💡 연료명은 'LNG', 'LPG', '경유', '휘발유', '등유', 'B-C유' 자동 인식"}
+          onParse={parseExcel}
+        />
+      )}
     </div>
   );
 }
 
+// ═══════════════════════════════════════════
+// Scope 2 · 전력
+// ═══════════════════════════════════════════
 function Scope2P({ data, set, ud }) {
+  const [mode, setMode] = useState("yearly");
   const ce = ud === "all" || ud === "admin";
-  let total = 0;
-  return (
-    <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
-      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${T.g100}`, display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>월별 전력 사용량</span>
-        <span style={{ fontSize: 12, fontWeight: 500, color: T.g400 }}>총무과</span>
-        <span style={{ fontSize: 11, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh</span>
+
+  // data: { yearly_kwh: 1250400, monthly: [1월~12월], input_type: "원" }
+  const inputType = data.input_type || "kWh"; // kWh | 원
+
+  const getKwhFromValue = (val) => {
+    if (!val) return 0;
+    if (inputType === "kWh") return parseFloat(val);
+    if (inputType === "원") return parseFloat(val) / 165; // 산업용 을 평균 165원/kWh
+    return parseFloat(val);
+  };
+
+  const renderYearly = () => {
+    const val = data.yearly_val || "";
+    const kwh = getKwhFromValue(val);
+    const mwh = kwh / 1000;
+    const co2 = mwh * EFS2;
+    const highlight = ce && ud !== "all" && !val;
+    
+    return (
+      <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>연간 총 전력 사용량</span>
+          <span style={{ fontSize: 12, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh (2023 최신)</span>
+        </div>
+        <p style={{ fontSize: 13, color: T.g500, marginBottom: 14, lineHeight: 1.6 }}>
+          💡 한전 사이버지점 → 연간 사용량 조회 → 12개월 합계를 한 번에 입력하시면 됩니다
+        </p>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="number" value={val} disabled={!ce}
+            onChange={e => set("yearly_val", e.target.value)}
+            placeholder={highlight ? "연간 합계 입력 필요" : "1,250,400"}
+            style={{
+              flex: 1, padding: "14px 18px", borderRadius: 10,
+              border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+              fontSize: 18, fontWeight: 600, textAlign: "right",
+              background: ce ? T.white : T.g50, opacity: ce ? 1 : 0.5
+            }} />
+          <select value={inputType} disabled={!ce}
+            onChange={e => set("input_type", e.target.value)}
+            style={{
+              padding: "14px 16px", borderRadius: 10, border: `1px solid ${T.g200}`,
+              background: T.white, fontSize: 15, fontWeight: 500, color: T.g700, cursor: "pointer"
+            }}>
+            <option value="kWh">kWh</option>
+            <option value="원">원 (전기요금)</option>
+          </select>
+        </div>
+        {inputType === "원" && (
+          <p style={{ fontSize: 11, color: T.g400, marginTop: 6 }}>
+            💡 산업용 평균 단가 165원/kWh로 역산 (2024년 기준)
+          </p>
+        )}
+        
+        {kwh > 0 && (
+          <div style={{ marginTop: 16, padding: 16, background: T.g50, borderRadius: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: T.g500 }}>사용량</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>
+                {kwh.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh · {mwh.toFixed(2)} MWh
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+              <span style={{ fontSize: 13, color: T.g500 }}>배출량 (Scope 2)</span>
+              <span style={{ fontSize: 18, fontWeight: 700, color: T.g900 }}>
+                {co2.toFixed(2)} tCO₂eq
+              </span>
+            </div>
+          </div>
+        )}
       </div>
-      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-        <thead><tr style={{ borderBottom: `1px solid ${T.g200}` }}>
-          {["월", "사용량 (kWh)", "MWh", "배출량 (tCO₂eq)"].map(h =>
-            <th key={h} style={{ padding: "12px 14px", textAlign: h === "월" ? "left" : "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>{h}</th>
-          )}
-        </tr></thead>
-        <tbody>{MO.map((m, i) => {
-          const kwh = data[i] || 0;
-          const mwh = kwh / 1000;
-          const co2 = mwh * EFS2;
-          total += co2;
-          const needInput = ce && ud !== "all" && !kwh;
-          return <tr key={i} style={{ borderBottom: i < 11 ? `1px solid ${T.g100}` : "none", background: needInput ? '#fff5f5' : "transparent" }}>
-            <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{m}</td>
-            <td style={{ padding: "6px 4px", textAlign: "right" }}>
-              <input type="number" value={data[i] || ""} disabled={!ce} onChange={e => set(i, parseFloat(e.target.value) || 0)}
-                placeholder={needInput ? "입력 필요" : ""}
-                style={{ width: 130, padding: "7px 10px", borderRadius: 6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: ce ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 14, fontWeight: 600, opacity: ce ? 1 : 0.5 }} />
-            </td>
-            <td style={{ padding: "10px 14px", textAlign: "right", color: T.g500, fontSize: 13 }}>{mwh.toFixed(3)}</td>
-            <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g900, fontFeatureSettings: "'tnum'" }}>{co2.toFixed(2)}</td>
-          </tr>;
-        })}
-        <tr style={{ background: T.g50, borderTop: `1px solid ${T.g200}` }}>
-          <td colSpan="3" style={{ padding: "12px 14px", fontSize: 13, fontWeight: 600, color: T.g600, textAlign: "right" }}>연간 합계</td>
-          <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: 700, fontSize: 16, color: T.g900, fontFeatureSettings: "'tnum'" }}>{total.toFixed(2)}</td>
-        </tr></tbody>
-      </table>
+    );
+  };
+
+  const renderMonthly = () => {
+    let total = 0;
+    return (
+      <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>월별 전력 사용량</span>
+          <span style={{ fontSize: 12, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
+          {[0, 6].map(start => (
+            <div key={start}>
+              {[...Array(6)].map((_, idx) => {
+                const i = start + idx;
+                const v = data[i] || "";
+                const kwh = parseFloat(v) || 0;
+                total += kwh;
+                const highlight = ce && ud !== "all" && !v;
+                return (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: T.g500, width: 30 }}>{MO[i]}</span>
+                    <input type="number" value={v} disabled={!ce}
+                      onChange={e => set(i, parseFloat(e.target.value) || 0)}
+                      placeholder={highlight ? "입력" : "0"}
+                      style={{
+                        flex: 1, padding: "7px 10px", borderRadius: 6,
+                        border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+                        fontSize: 13, textAlign: "right", fontWeight: 500,
+                        background: ce ? T.white : T.g50, opacity: ce ? 1 : 0.5
+                      }} />
+                    <span style={{ fontSize: 11, color: T.g400, width: 30 }}>kWh</span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 16, padding: 14, background: T.g50, borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, color: T.g500 }}>연간 합계</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: T.g900 }}>
+              {total.toLocaleString()} kWh · {(total * EFS2 / 1000).toFixed(2)} tCO₂eq
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const parseExcel = (wb) => {
+    try {
+      // ━━━ 포맷 A: 피티씨 활동도 입력 시트 (전력 칼럼 찾기) ━━━
+      const sheetA = wb.SheetNames.find(n => n.includes("활동도") || n.includes("1 활동"));
+      if (sheetA) {
+        const ws = wb.Sheets[sheetA];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        
+        // 유효 데이터 있는 가장 최근 연도 찾기
+        const currentYear = new Date().getFullYear();
+        const candidateRows = [];
+        for (let i = 15; i < Math.min(150, rows.length); i++) {
+          const r = rows[i] || [];
+          const yr = parseInt(r[1]);
+          if (!isNaN(yr) && yr >= 2020 && yr <= currentYear + 1 && String(r[1]).trim() === String(yr)) {
+            let hasData = false;
+            const unitRow = rows[8] || [];
+            for (let c = 2; c < r.length; c++) {
+              const val = parseFloat(r[c]);
+              const unit = String(unitRow[c] || "");
+              if (val > 0 && unit !== "원" && unit !== "천원") { hasData = true; break; }
+            }
+            if (hasData) candidateRows.push({ row: i, year: yr });
+          }
+        }
+        
+        const annualRow = candidateRows.length > 0 
+          ? candidateRows.reduce((max, c) => c.year > max.year ? c : max).row 
+          : -1;
+        
+        if (annualRow > 0) {
+          const fuelNameRow = rows[4] || [];
+          const unitRow = rows[8] || [];
+          const valRow = rows[annualRow] || [];
+          
+          let totalKwh = 0;
+          for (let c = 2; c < valRow.length; c++) {
+            const fuelName = String(fuelNameRow[c] || "");
+            const unit = String(unitRow[c] || "");
+            const val = parseFloat(valRow[c]);
+            if (!val) continue;
+            if (fuelName.includes("전력") && unit === "kWh") {
+              totalKwh += val;
+            }
+          }
+          
+          if (totalKwh > 0) {
+            return {
+              message: `✅ 피티씨 에너지·온실가스 인벤토리 Tool 인식 완료 (${String(rows[annualRow][1])}년)`,
+              preview: `연간 전력 사용량: ${totalKwh.toLocaleString()} kWh\n= ${(totalKwh/1000).toFixed(2)} MWh\n= ${(totalKwh/1000 * EFS2).toFixed(2)} tCO₂eq (배출계수 ${EFS2})`,
+              apply: () => {
+                set("yearly_val", totalKwh);
+                set("input_type", "kWh");
+                setMode("yearly");
+              }
+            };
+          }
+        }
+      }
+      
+      // ━━━ 포맷 B: 이원그린텍 / SK하이닉스 공급망 Scope1&2 시트 ━━━
+      const sheetB = wb.SheetNames.find(n => n.includes("Scope1&2") || n.includes("Scope 1&2") || (n.includes("Scope2") && !n.includes("EF")));
+      if (sheetB) {
+        const ws = wb.Sheets[sheetB];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        
+        // 헤더에 "전력" 또는 kWh 행 찾기
+        let totalKwh = 0;
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i] || [];
+          for (let j = 0; j < r.length; j++) {
+            const cell = String(r[j] || "");
+            if (cell.includes("전력") || cell.includes("외부 전기") || cell.includes("구매전력")) {
+              // 같은 행에서 kWh/MWh 값 찾기
+              for (let k = j + 1; k < r.length; k++) {
+                const val = parseFloat(r[k]);
+                if (!isNaN(val) && val > 100) {
+                  // 단위 열 확인
+                  const unitCellValue = String(r[k+1] || "").trim();
+                  if (unitCellValue.toLowerCase().includes("kwh")) totalKwh += val;
+                  else if (unitCellValue.toLowerCase().includes("mwh")) totalKwh += val * 1000;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        
+        if (totalKwh > 0) {
+          return {
+            message: `✅ 공급망 툴 타입 인식 완료`,
+            preview: `연간 전력 사용량: ${totalKwh.toLocaleString()} kWh\n= ${(totalKwh/1000).toFixed(2)} MWh\n= ${(totalKwh/1000 * EFS2).toFixed(2)} tCO₂eq`,
+            apply: () => {
+              set("yearly_val", totalKwh);
+              set("input_type", "kWh");
+              setMode("yearly");
+            }
+          };
+        }
+      }
+      
+      // ━━━ 포맷 C: 한전 사이버지점 / 월별 일반 ━━━
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+      
+      // 월 행 찾기 + kWh 열 찾기
+      let monthCol = -1, kwhCol = -1, headerRow = -1;
+      for (let i = 0; i < Math.min(15, rows.length); i++) {
+        const row = rows[i] || [];
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j] || "").trim();
+          if (cell.includes("청구년월") || cell === "년월" || cell === "월" || cell.includes("사용월")) monthCol = j;
+          if (cell.includes("kWh") || cell.includes("사용량") || cell.includes("사용전력")) kwhCol = j;
+        }
+        if (monthCol >= 0 && kwhCol >= 0) { headerRow = i; break; }
+      }
+      
+      if (kwhCol < 0) return { 
+        error: "전력 데이터를 찾을 수 없습니다. 지원 포맷: ①피티씨 에너지 Tool, ②SK하이닉스 공급망 툴, ③한전 사이버지점 다운로드, ④[월 | 사용량(kWh)] 형식" 
+      };
+      
+      // 12개월 데이터 추출
+      const monthly = new Array(12).fill(null);
+      for (let i = headerRow + 1; i < rows.length; i++) {
+        const row = rows[i] || [];
+        const kwh = parseFloat(row[kwhCol]);
+        if (!kwh) continue;
+        
+        let monthNum = -1;
+        if (monthCol >= 0) {
+          const m = String(row[monthCol]).match(/2\d{3}[-.\s]*?(\d{1,2})|(\d{1,2})월/);
+          if (m) monthNum = parseInt(m[1] || m[2]) - 1;
+        }
+        if (monthNum < 0 || monthNum > 11) monthNum = monthly.findIndex(v => v === null);
+        if (monthNum >= 0 && monthNum < 12) monthly[monthNum] = kwh;
+      }
+      
+      const count = monthly.filter(v => v).length;
+      if (count === 0) return { error: "월별 데이터를 찾을 수 없습니다." };
+      
+      return {
+        message: `✅ 월별 전력 데이터 인식 완료 (${count}개월)`,
+        preview: monthly.map((v, i) => v ? `${MO[i]}: ${v.toLocaleString()} kWh` : `${MO[i]}: -`).join("\n"),
+        apply: () => {
+          monthly.forEach((v, i) => { if (v) set(i, v); });
+          setMode("monthly");
+        }
+      };
+    } catch (e) {
+      return { error: "엑셀 파싱 오류: " + e.message };
+    }
+  };
+
+  return (
+    <div>
+      <InputTabs mode={mode} onChange={setMode}/>
+      {mode === "yearly" && renderYearly()}
+      {mode === "monthly" && renderMonthly()}
+      {mode === "excel" && (
+        <ExcelUpload
+          hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
+          expectedFormat={"✅ 지원 포맷:\n① 피티씨 타입: 에너지·온실가스 인벤토리 Tool (전력 칼럼 자동 추출)\n② 이원그린텍 타입: SK하이닉스 공급망 가치사슬 관리 툴\n③ 한전 사이버지점 다운로드: 청구년월 + 사용량(kWh)\n④ 범용: [월 | 사용량] 형식 엑셀"}
+          onParse={parseExcel}
+        />
+      )}
     </div>
   );
 }
 
 function Scope3P({ data, set, ud }) {
+  const [mode, setMode] = useState("yearly");
   const ce = d => ud === "all" || ud === d;
+
+  const renderYearly = () => {
+    return (
+      <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+          <p style={{ fontSize: 13, color: T.g600, lineHeight: 1.6 }}>
+            💡 카테고리별 연간 지출 총액을 <strong>백만원 단위</strong>로 입력하세요.
+            회계 시스템이나 매입처 집계 자료에서 숫자 확인.
+          </p>
+        </div>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead><tr style={{ borderBottom: `1px solid ${T.g200}` }}>
+            {["카테고리", "항목", "담당", "비용 (백만원)", "배출계수", "배출량 (tCO₂eq)"].map(h =>
+              <th key={h} style={{ padding: "12px 14px", textAlign: ["항목","카테고리","담당"].includes(h) ? "left" : "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>{h}</th>
+            )}
+          </tr></thead>
+          <tbody>{S3.map((c, i) => {
+            const mine = ce(c.dept);
+            const cost = data[c.id] || 0;
+            const em = c.ef ? cost * c.ef : 0;
+            const needInput = mine && ud !== "all" && !cost && c.id !== "c7";
+            return <tr key={c.id} style={{ borderBottom: i < S3.length - 1 ? `1px solid ${T.g100}` : "none", opacity: mine ? 1 : 0.5, background: needInput ? '#fff5f5' : "transparent" }}>
+              <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{c.c}</td>
+              <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{c.name}</td>
+              <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{DEPTS[c.dept].name.split(" · ")[0]}</td>
+              <td style={{ padding: "6px 4px", textAlign: "right" }}>
+                {c.id === "c7" ? <span style={{ fontSize: 12, color: T.g400 }}>별도 산정</span> :
+                  <input type="number" value={data[c.id] || ""} disabled={!mine} onChange={e => set(c.id, parseFloat(e.target.value) || 0)}
+                    placeholder={needInput ? "입력" : "0"}
+                    style={{ width: 120, padding: "8px 12px", borderRadius: 6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: mine ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 14, opacity: mine ? 1 : 0.5, fontWeight: 600 }} />}
+              </td>
+              <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, color: T.g500 }}>{c.ef || "-"}</td>
+              <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g900, fontFeatureSettings: "'tnum'" }}>{em.toFixed(1)}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const parseExcel = (wb) => {
+    try {
+      const parsed = {};
+      let formatDetected = "";
+      
+      // ━━━ 포맷 A: SK하이닉스 공식 Scope 3 템플릿 ━━━
+      // 시트명이 "Category 1", "Category 2" ... "Category 15"로 분리됨
+      const categorySheets = wb.SheetNames.filter(n => /^Category\s*\d+$/i.test(n.trim()));
+      if (categorySheets.length >= 5) {
+        formatDetected = "SK하이닉스 공식 Scope 3 템플릿";
+        const catMap = { 1: "c1", 2: "c2", 4: "c4", 5: "c5", 6: "c6", 7: "c7" };
+        
+        for (const sn of categorySheets) {
+          const catNum = parseInt(sn.match(/\d+/)[0]);
+          const catId = catMap[catNum];
+          if (!catId) continue;
+          
+          const ws = wb.Sheets[sn];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+          
+          // "GHG Emission" 또는 "tCO2eq" 포함 셀의 "계" 행에서 값 추출
+          // 또는 "비용 기반" 또는 "Spend-based" 섹션에서 지출 비용 합산
+          let totalTco2 = 0;
+          let totalCost = 0;
+          
+          for (let i = 0; i < rows.length; i++) {
+            const r = rows[i] || [];
+            const firstCol = String(r[0] || "");
+            // "계" 행에서 tCO2eq 값 찾기
+            if (firstCol.trim() === "계") {
+              for (let j = 0; j < r.length; j++) {
+                const v = parseFloat(r[j]);
+                if (!isNaN(v) && v > 0 && v < 1e9) {
+                  // GHG Emission이 들어간 열인지 확인
+                  const hdr = rows.slice(0, i).reverse().find(row => row && row.some(c => String(c || "").includes("GHG Emission")));
+                  if (hdr) {
+                    const emCol = hdr.findIndex(c => String(c || "").includes("GHG Emission"));
+                    if (emCol === j) { totalTco2 += v; break; }
+                  }
+                }
+              }
+            }
+            // "지출 비용" 또는 "백만원" 행에서 값 합산 (비용 기반 섹션)
+            for (let j = 0; j < r.length; j++) {
+              const cell = String(r[j] || "");
+              if (cell.includes("지출 비용") || cell.includes("Spend")) {
+                // 같은 행에서 숫자 찾기
+                for (let k = j + 1; k < r.length; k++) {
+                  const v = parseFloat(r[k]);
+                  if (!isNaN(v) && v > 0) { totalCost += v; break; }
+                }
+              }
+            }
+          }
+          
+          // 비용 기반 섹션에서 직접 합계 추출
+          for (let i = 0; i < rows.length; i++) {
+            const r = rows[i] || [];
+            for (let j = 0; j < r.length; j++) {
+              const cell = String(r[j] || "");
+              if ((cell.includes("지출 비용") && cell.includes("백만원")) || cell === "계") {
+                const next = rows[i + 1];
+                // 이 열에 있는 숫자들 합산 시도
+                const headerRowIdx = i;
+                for (let r2 = i + 1; r2 < Math.min(i + 50, rows.length); r2++) {
+                  const dataRow = rows[r2] || [];
+                  const v = parseFloat(dataRow[j]);
+                  if (!isNaN(v) && v > 0 && v < 1e9) totalCost += v;
+                }
+                break;
+              }
+            }
+          }
+          
+          if (totalCost > 0 && !parsed[catId]) {
+            parsed[catId] = Math.round(totalCost * 10) / 10;
+          }
+        }
+      }
+      
+      // ━━━ 포맷 B: 이원그린텍 · 공급망 Scope3 시트 ━━━
+      // 시트명 "3. Scope3" 또는 "Scope3", 카테고리명 1~15 세로 나열
+      if (Object.keys(parsed).length === 0) {
+        const sheetB = wb.SheetNames.find(n => n.includes("Scope3") || n.includes("Scope 3"));
+        if (sheetB) {
+          const ws = wb.Sheets[sheetB];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+          
+          // "카테고리" + "배출량" 헤더 찾기
+          let hdrRow = -1, catCol = -1, emCol = -1;
+          for (let i = 0; i < Math.min(20, rows.length); i++) {
+            const r = rows[i] || [];
+            for (let j = 0; j < r.length; j++) {
+              const cell = String(r[j] || "").trim();
+              if (cell.includes("카테고리") || cell.includes("Scope 3 카테고리")) { catCol = j; hdrRow = i; }
+              if (cell.includes("배출량") && cell.includes("tCO2")) emCol = j;
+            }
+            if (hdrRow >= 0 && emCol >= 0) break;
+          }
+          
+          if (hdrRow >= 0) {
+            formatDetected = "이원그린텍 / 공급망 Scope3 툴";
+            const catMap = {
+              "1. 구매": "c1", "2. 구매한 자본재": "c2", "2. 자본재": "c2",
+              "4. 업스트림": "c4", "5. 운영중 폐기물": "c5", "5. 폐기물": "c5",
+              "6. 임직원 출장": "c6", "6. 출장": "c6", "7. 임직원 출퇴근": "c7", "7. 통근": "c7"
+            };
+            
+            for (let i = hdrRow + 1; i < Math.min(hdrRow + 25, rows.length); i++) {
+              const r = rows[i] || [];
+              const catName = String(r[catCol] || "").trim();
+              if (!catName || catName.includes("예시")) continue;
+              
+              const emission = parseFloat(r[emCol]);
+              if (!emission) continue;
+              
+              for (const [key, id] of Object.entries(catMap)) {
+                if (catName.startsWith(key.split(". ")[0] + ".") || catName.includes(key.split(". ")[1] || "")) {
+                  // 이미 배출량 tCO2eq이므로 역산: 비용(백만원) = 배출량 / 배출계수
+                  const cat = S3.find(c => c.id === id);
+                  if (cat && cat.ef) {
+                    parsed[id] = Math.round(emission / cat.ef * 10) / 10;
+                  } else if (id === "c7") {
+                    // 통근은 ef null이므로 배출량을 비용처럼 저장
+                    parsed[id] = Math.round(emission * 10) / 10;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // ━━━ 포맷 C: 일반 매입처 집계 엑셀 (키워드 분류) ━━━
+      if (Object.keys(parsed).length === 0) {
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+        
+        let catCol = -1, costCol = -1, headerRow = -1;
+        for (let i = 0; i < Math.min(10, rows.length); i++) {
+          const row = rows[i] || [];
+          for (let j = 0; j < row.length; j++) {
+            const cell = String(row[j] || "").trim();
+            if (cell.includes("카테고리") || cell.includes("구분") || cell.includes("거래처") || cell.includes("품목")) catCol = j;
+            if (cell.includes("비용") || cell.includes("금액") || cell.includes("지출")) costCol = j;
+          }
+          if (catCol >= 0 && costCol >= 0) { headerRow = i; break; }
+        }
+        
+        if (costCol >= 0) {
+          formatDetected = "매입처 집계 (키워드 자동 분류)";
+          for (let i = headerRow + 1; i < rows.length; i++) {
+            const row = rows[i] || [];
+            const cat = String(row[catCol] || "").trim();
+            const cost = parseFloat(row[costCol]);
+            if (!cat || !cost) continue;
+            
+            let catId = null;
+            if (cat.includes("원재료") || cat.includes("원부자재") || cat.includes("부품") || cat.includes("Cat.1") || cat.includes("구매")) catId = "c1";
+            else if (cat.includes("설비") || cat.includes("기계") || cat.includes("자본재") || cat.includes("Cat.2")) catId = "c2";
+            else if (cat.includes("운송") || cat.includes("물류") || cat.includes("배송") || cat.includes("Cat.4")) catId = "c4";
+            else if (cat.includes("폐기") || cat.includes("처리") || cat.includes("Cat.5")) catId = "c5";
+            else if (cat.includes("출장") || cat.includes("항공") || cat.includes("숙박") || cat.includes("Cat.6")) catId = "c6";
+            
+            if (catId) {
+              const costInMil = cost >= 1000000 ? cost / 1000000 : cost;
+              parsed[catId] = (parsed[catId] || 0) + costInMil;
+            }
+          }
+        }
+      }
+      
+      const count = Object.keys(parsed).length;
+      if (count === 0) {
+        return { 
+          error: "Scope 3 데이터를 찾을 수 없습니다. 지원 포맷: ①SK하이닉스 공식 Category별 시트, ②이원그린텍/공급망 Scope3 시트, ③[카테고리/거래처][비용] 매입처 집계" 
+        };
+      }
+      
+      return {
+        message: `✅ ${formatDetected} 인식 완료 (${count}개 카테고리)`,
+        preview: Object.entries(parsed).map(([k, v]) => {
+          const cat = S3.find(c => c.id === k);
+          return `• ${cat?.c} ${cat?.name}: ${v.toLocaleString(undefined, {maximumFractionDigits: 1})} 백만원`;
+        }).join("\n"),
+        apply: () => {
+          Object.entries(parsed).forEach(([k, v]) => set(k, v));
+        }
+      };
+    } catch (e) {
+      return { error: "엑셀 파싱 오류: " + e.message };
+    }
+  };
+
   return (
-    <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
-      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-        <thead><tr style={{ borderBottom: `1px solid ${T.g200}` }}>
-          {["카테고리", "항목", "담당", "비용 (백만원)", "배출계수", "배출량 (tCO₂eq)"].map(h =>
-            <th key={h} style={{ padding: "12px 14px", textAlign: ["항목","카테고리","담당"].includes(h) ? "left" : "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>{h}</th>
-          )}
-        </tr></thead>
-        <tbody>{S3.map((c, i) => {
-          const mine = ce(c.dept);
-          const cost = data[c.id] || 0;
-          const em = c.ef ? cost * c.ef : 0;
-          const needInput = mine && ud !== "all" && !cost && c.id !== "c7";
-          return <tr key={c.id} style={{ borderBottom: i < S3.length - 1 ? `1px solid ${T.g100}` : "none", opacity: mine ? 1 : 0.5, background: needInput ? '#fff5f5' : "transparent" }}>
-            <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{c.c}</td>
-            <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{c.name}</td>
-            <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{DEPTS[c.dept].name.split(" · ")[0]}</td>
-            <td style={{ padding: "6px 4px", textAlign: "right" }}>
-              {c.id === "c7" ? <span style={{ fontSize: 12, color: T.g400 }}>별도 산정</span> :
-                <input type="number" value={data[c.id] || ""} disabled={!mine} onChange={e => set(c.id, parseFloat(e.target.value) || 0)}
-                  placeholder={needInput ? "입력 필요" : ""}
-                  style={{ width: 110, padding: "7px 10px", borderRadius: 6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: mine ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 13, opacity: mine ? 1 : 0.5, fontWeight: needInput ? 600 : 400 }} />}
-            </td>
-            <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, color: T.g500 }}>{c.ef || "-"}</td>
-            <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g900, fontFeatureSettings: "'tnum'" }}>{em.toFixed(1)}</td>
-          </tr>;
-        })}</tbody>
-      </table>
+    <div>
+      <InputTabs mode={mode} onChange={setMode}/>
+      {(mode === "yearly" || mode === "monthly") && renderYearly()}
+      {mode === "excel" && (
+        <ExcelUpload
+          hint="SK하이닉스 요청 템플릿이나 업체 회계 자료 그대로 올리세요"
+          expectedFormat={"✅ 지원 포맷:\n① SK하이닉스 공식 템플릿: Category 1~15 시트 각각 자동 인식\n② 이원그린텍 타입: '3. Scope3' 시트에 카테고리별 배출량 표\n③ 매입처 집계: 키워드로 자동 분류 (원재료→Cat.1, 설비→Cat.2, 운송→Cat.4, 폐기→Cat.5, 출장→Cat.6)"}
+          onParse={parseExcel}
+        />
+      )}
     </div>
   );
 }
@@ -488,20 +1511,48 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
 }
 
 function Dash({ scopeData, blockData, blocks, standards }) {
+  // Scope 1: 연간 + 월별 합산, 단위 환산 적용
   let s1total = 0;
-  SF.forEach(f => s1total += calc(scopeData.s1[f.id]||0, f.ncv, f.co2, f.ch4, f.n2o).t);
-  MF.forEach(f => s1total += calc(scopeData.s1[f.id]||0, f.ncv, f.co2, f.ch4, f.n2o).t);
+  [...SF, ...MF].forEach(f => {
+    const val = scopeData.s1[f.id] || 0;
+    const uk = scopeData.s1[f.id + "_unit"] || (f.units?.[0]?.key);
+    const unit = (f.units || []).find(u => u.key === uk) || f.units?.[0];
+    const baseAmt = (parseFloat(val) || 0) * (unit?.factor || 1);
+    s1total += calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
+    // 월별도 추가
+    const monthly = scopeData.s1["_monthly_" + f.id];
+    if (monthly && Array.isArray(monthly)) {
+      const sum = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      s1total += calc(sum * (unit?.factor || 1), f.ncv, f.co2, f.ch4, f.n2o).t;
+    }
+  });
+  
+  // Scope 2: 연간 또는 월별
   let s2total = 0;
-  for(let i=0;i<12;i++) s2total += ((scopeData.s2[i]||0)/1000) * EFS2;
+  const yearlyVal = scopeData.s2.yearly_val;
+  if (yearlyVal) {
+    const inputType = scopeData.s2.input_type || "kWh";
+    const kwh = inputType === "원" ? (parseFloat(yearlyVal) || 0) / 165 : (parseFloat(yearlyVal) || 0);
+    s2total = (kwh / 1000) * EFS2;
+  } else {
+    for (let i = 0; i < 12; i++) s2total += ((scopeData.s2[i] || 0) / 1000) * EFS2;
+  }
+  
+  // Scope 3
   let s3total = 0;
-  S3.forEach(c => { if(c.ef) s3total += (scopeData.s3[c.id]||0) * c.ef; });
+  S3.forEach(c => { if (c.ef) s3total += (scopeData.s3[c.id] || 0) * c.ef; });
   const grand = s1total + s2total + s3total;
 
   const totalBlocks = blocks.length;
   const isDone = (b) => {
-    if (b.input_type === 'scope1_table') return SF.filter(f => scopeData.s1[f.id]).length + MF.filter(f => scopeData.s1[f.id]).length > 0;
-    if (b.input_type === 'scope2_table') return Object.values(scopeData.s2 || {}).some(v => v);
-    if (b.input_type === 'scope3_table') return S3.filter(c => c.id !== 'c7' && scopeData.s3[c.id]).length > 0;
+    if (b.input_type === 'scope1_table') {
+      return [...SF, ...MF].some(f => scopeData.s1[f.id]) ||
+             Object.keys(scopeData.s1).some(k => k.startsWith("_monthly_") && Array.isArray(scopeData.s1[k]) && scopeData.s1[k].some(v => v));
+    }
+    if (b.input_type === 'scope2_table') {
+      return scopeData.s2.yearly_val || Object.keys(scopeData.s2).some(k => !isNaN(parseInt(k)) && scopeData.s2[k]);
+    }
+    if (b.input_type === 'scope3_table') return S3.some(c => c.id !== 'c7' && scopeData.s3[c.id]);
     const v = blockData[b.id];
     if (b.input_type === 'text') return v?.content_text && v.content_text.length > 10;
     return v?.content_json && v.content_json.length > 0 && v.content_json.some(r => Object.values(r||{}).some(x => x));
