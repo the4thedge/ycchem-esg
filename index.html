@@ -1339,6 +1339,166 @@ function TableInput({ value, onChange, disabled }) {
 // ═══════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════
+// 📘 공시별 일반인 설명 — 중소기업 담당자가 바로 이해할 수 있게
+// ═══════════════════════════════════════════════════════════════════════
+const DISCLOSURE_GUIDES = {
+  "102-1": {
+    icon: "🌡️",
+    simple: "우리 회사가 앞으로 기후변화에 어떻게 대응할 건지 계획표를 보여주세요.",
+    keyConcept: {
+      title: "왜 '1.5°C'인가요?",
+      body: "2015년 파리협정에서 전 세계가 '지구 기온 상승을 산업화 이전 대비 1.5°C 이내로 막자'고 약속했습니다. 이 선을 넘으면 폭염·가뭄·해수면 상승이 심각해집니다. GRI 102는 우리 회사 계획이 이 목표와 맞는지 설명하라고 요구합니다."
+    },
+    whatToWrite: [
+      "감축 정책과 실제 활동 (노후 설비 교체, 차량 전환 등)",
+      "투자 금액 (CapEx·OpEx)",
+      "누가 책임지는지 (이사회·환경안전부 등)",
+      "직원·지역사회·생물다양성에 미치는 영향",
+      "로비 활동·협회 소속 여부"
+    ],
+    time: "15~20분",
+    tip: "막히는 용어는 라벨 옆 '?' 버튼 클릭. 대부분 질문은 선택지 4개 중 고르기만 하면 됩니다."
+  },
+  "102-2": {
+    icon: "🌊",
+    simple: "폭염·홍수·태풍·정전 같은 기후 재난에 우리 회사가 어떻게 대비하고 있는지 알려주세요.",
+    keyConcept: {
+      title: "전환계획(102-1)과 뭐가 다른가요?",
+      body: "• 전환계획 = 배출을 줄이는 계획 (원인 대응)\n• 적응계획 = 이미 발생하는 기후 영향에 대비 (결과 대응)\n\n예: 폭우 대비 배수 강화, 정전 대비 발전기 보유, 폭염 대비 냉방 강화."
+    },
+    whatToWrite: [
+      "식별된 물리적 위험 (폭염·홍수·정전 등)",
+      "대응 조치 (발전기·배수시설·냉방 등)",
+      "투자 금액",
+      "감독 거버넌스"
+    ],
+    time: "10~15분",
+    tip: "중소기업은 대부분 '정전 리스크 + 설비 정기 점검' 수준으로 충분합니다."
+  },
+  "102-3": {
+    icon: "👥",
+    simple: "저탄소 사업으로 바꾸는 과정에서 직원들이 피해 안 보게 어떻게 하고 있는지 알려주세요.",
+    keyConcept: {
+      title: "공정한 전환(Just Transition)이 뭔가요?",
+      body: "저탄소로 가는 과정에서 '누구도 소외되지 않도록' 하는 원칙입니다.\n\n예:\n• 고탄소 공정 축소 → 해고 없이 재배치·재교육\n• 신기술 도입 → 기존 직원 역량 강화 프로그램 제공\n\nGRI 102에서 신규 도입된 중요 공시 영역입니다."
+    },
+    whatToWrite: [
+      "신규 채용·재배치·재교육 인원수",
+      "교육 시간·참여율",
+      "직원 유형별 분포 (사무·생산·연구직)",
+      "생활임금 이상 받는 직원 비율"
+    ],
+    time: "5~10분",
+    tip: "대부분 숫자 입력만 하면 끝. 중소기업은 재배치 실적이 적어도 괜찮습니다."
+  },
+  "102-4": {
+    icon: "🎯",
+    simple: "온실가스를 언제까지 얼마나 줄일지 목표를 세웠나요? 그 진척 상황은 어떤가요?",
+    keyConcept: {
+      title: "기준연도가 뭔가요?",
+      body: "감축 목표의 '출발선'입니다. 예를 들어 '2024년 대비 2030년까지 30% 감축'이라고 할 때, 2024년이 기준연도입니다.\n\n중소기업 현실:\n• 최근 데이터가 가장 정확한 해를 기준연도로 잡으세요.\n• 와이씨켐은 2024년을 기준연도로 설정."
+    },
+    whatToWrite: [
+      "단기·중기·장기 감축 목표 (%/년)",
+      "기준연도와 기준연도 배출량",
+      "Scope 2 방법론 (위치기반·시장기반)",
+      "포함 가스 (CO₂·CH₄·N₂O 등)",
+      "SBTi 검증 여부"
+    ],
+    time: "10~15분",
+    tip: "중소기업 기본: '연 1.5% 감축' 정도. SBTi 검증은 '단계적 도입 예정' 선택이 현실적."
+  },
+  "102-9": {
+    icon: "🌳",
+    simple: "나무를 심거나 탄소 포집 시설을 운영해서 직접 온실가스를 제거하는 활동이 있나요?",
+    keyConcept: {
+      title: "제거 활동이 뭔가요?",
+      body: "이미 대기 중에 있는 CO₂를 다시 빼내는 활동입니다.\n\n종류:\n• 조림·재조림 (나무 심기)\n• CCUS (이산화탄소 포집·저장·활용)\n• 바이오차 (숯 형태로 탄소 고정)\n\n중소기업 현실: 대부분 '해당 없음'. 대기업·에너지 기업이 주로 수행."
+    },
+    whatToWrite: [
+      "제거 활동 유무",
+      "있다면: 유형·제거량·품질 기준"
+    ],
+    time: "2분",
+    tip: "중소기업 99%는 '해당 없음' 선택하면 됩니다. 걱정 말고 체크만 하세요."
+  },
+  "102-10": {
+    icon: "💰",
+    simple: "외부에서 탄소 크레딧을 사서 우리 회사 배출 상쇄에 쓰고 있나요?",
+    keyConcept: {
+      title: "탄소 크레딧이 뭔가요?",
+      body: "'다른 곳에서 감축된 탄소량'을 돈 주고 사서, 우리 회사 배출 상쇄에 쓰는 것입니다.\n\n예:\n• 인도네시아 열대우림 보호 프로젝트에서 발생한 크레딧 구매\n• 베트남 재생에너지 사업 크레딧 구매\n\n중소기업 현실: 대부분 사용 안 함. '해당 없음' 선택 가능."
+    },
+    whatToWrite: [
+      "크레딧 취득 유무",
+      "있다면: 총량·품질 기준·용도"
+    ],
+    time: "2분",
+    tip: "중소기업 99%는 '해당 없음' 선택하면 끝."
+  },
+};
+
+// 📘 공시 설명 박스 컴포넌트 (접기/펼치기)
+function DisclosureGuide({ code }) {
+  const guide = DISCLOSURE_GUIDES[code];
+  const [open, setOpen] = useState(true);
+  if (!guide) return null;
+  
+  return (
+    <div style={{
+      background: "linear-gradient(135deg, " + T.blueBg + " 0%, " + T.violetBg + " 100%)",
+      border: `1px solid ${T.blue}33`, borderRadius: 12, padding: open ? 20 : 12, marginBottom: 20,
+      transition: "padding 0.2s"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+        onClick={() => setOpen(!open)}>
+        <span style={{ fontSize: 22 }}>{guide.icon}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.blue, letterSpacing: "0.04em" }}>📘 이 공시가 뭔가요?</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: T.g500 }}>⏱ {guide.time}</span>
+        <span style={{ fontSize: 14, color: T.g400, transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
+      </div>
+      
+      {open && (
+        <div style={{ marginTop: 14 }}>
+          {/* 한 줄 요약 */}
+          <div style={{ background: T.white, padding: 14, borderRadius: 8, marginBottom: 12 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: T.g800, lineHeight: 1.6, margin: 0 }}>
+              💬 <span style={{ color: T.g600, fontWeight: 500 }}>"{guide.simple}"</span>
+            </p>
+          </div>
+          
+          {/* 핵심 개념 */}
+          {guide.keyConcept && (
+            <div style={{ background: T.white, padding: 14, borderRadius: 8, marginBottom: 12 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 6 }}>
+                🤔 {guide.keyConcept.title}
+              </p>
+              <p style={{ fontSize: 12, color: T.g600, lineHeight: 1.7, whiteSpace: "pre-wrap", margin: 0 }}>
+                {guide.keyConcept.body}
+              </p>
+            </div>
+          )}
+          
+          {/* 무엇을 작성 + 팁 (2열) */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+            <div style={{ background: T.white, padding: 14, borderRadius: 8 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: T.g800, marginBottom: 8 }}>📝 무엇을 작성하나요?</p>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: T.g600, lineHeight: 1.8 }}>
+                {guide.whatToWrite.map((item, i) => <li key={i}>{item}</li>)}
+              </ul>
+            </div>
+            <div style={{ background: T.amberBg, padding: 14, borderRadius: 8, border: `1px solid ${T.amber}33` }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: T.g800, marginBottom: 6 }}>💡 팁</p>
+              <p style={{ fontSize: 11, color: T.g600, lineHeight: 1.7, margin: 0 }}>{guide.tip}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // 🎓 용어집 — 중소기업 담당자가 모를 만한 단어 전부
 // ═══════════════════════════════════════════════════════════════════════
 const GLOSSARY = {
@@ -1465,12 +1625,9 @@ function GlossaryTooltip({ termKey, children }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// 🎯 퀴즈 트리 — 102-1-a 정책 및 조치
-// ═══════════════════════════════════════════════════════════════════════
 const QUIZ_102_1a = {
   title: "102-1-a · 전환 계획 정책 및 조치",
-  intro: "4개 질문에 답하시면 GRI 102 요구사항에 맞는 서술문이 자동 완성됩니다. 잘 모르겠는 용어는 옆의 '?' 버튼을 누르세요.",
+  intro: "4개 항목을 선택하시면 GRI 102 요구사항에 맞는 서술문이 자동 완성됩니다. 잘 모르겠는 용어는 옆의 '?' 버튼을 누르세요.",
   steps: [
     {
       id: "industry",
@@ -1574,14 +1731,420 @@ const QUIZ_102_1a = {
   }
 };
 
+// 102-1-b: 시나리오 출처 및 방법론
+const QUIZ_102_1b = {
+  title: "102-1-b · 과학적 증거 부합성",
+  steps: [
+    {
+      id: "scenario",
+      question: "감축 목표 수립 시 참고한 기후 시나리오는?",
+      hint: "잘 모르겠으면 IPCC AR6 선택이 무난합니다.",
+      type: "single",
+      options: [
+        { key: "ipcc", label: "IPCC AR6 (6차 평가보고서)", desc: "전 세계 과학자 기후 참고서 · 중소기업 권장" },
+        { key: "iea", label: "IEA Net Zero 2050", desc: "에너지 전환 로드맵" },
+        { key: "korea", label: "국내 NDC (국가 감축목표)", desc: "2030년 40% 감축 국가 목표" },
+        { key: "unsure", label: "아직 특정 시나리오 선정 안 함", desc: "내부 기준으로 설정" },
+      ]
+    },
+    {
+      id: "method",
+      question: "배출량 산정 방법론은?",
+      hint: "중소기업은 보통 GHG Protocol + IPCC 2006 가이드라인을 기본으로 씁니다.",
+      type: "single",
+      options: [
+        { key: "standard", label: "GHG Protocol + IPCC 2006 가이드라인", desc: "국제 표준 · 중소기업 권장" },
+        { key: "korea_law", label: "환경부고시 배출계수 + GHG Protocol", desc: "국내 법령 기반" },
+        { key: "iso", label: "ISO 14064 + GHG Protocol", desc: "제3자 검증 고려 시" },
+      ]
+    },
+    {
+      id: "sbti",
+      question: "SBTi(과학기반 감축목표) 검증 계획은?",
+      hint: "중소기업 대부분은 '단계적 도입 예정' 선택이 현실적입니다.",
+      type: "single",
+      options: [
+        { key: "plan", label: "단계적 도입 예정", desc: "중소기업 현실적 선택" },
+        { key: "apply", label: "검증 신청 준비 중" },
+        { key: "done", label: "검증 완료" },
+        { key: "none", label: "검증 계획 없음" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const sc = {
+      ipcc: "기후변화에 관한 정부간 협의체(IPCC)의 제6차 평가보고서(AR6)",
+      iea: "IEA의 Net Zero 2050 시나리오",
+      korea: "국가 온실가스 감축목표(NDC)",
+      unsure: "내부 감축 기준"
+    }[ans.scenario] || "국제 기후 시나리오";
+    
+    const mt = {
+      standard: "GHG Protocol 및 IPCC 2006 가이드라인",
+      korea_law: "환경부고시 배출계수 및 GHG Protocol",
+      iso: "ISO 14064 및 GHG Protocol"
+    }[ans.method] || "GHG Protocol";
+    
+    const sbti = {
+      plan: "향후 과학기반감축목표(SBTi) 방법론 도입 및 정합성 검증을 단계적으로 추진할 예정입니다.",
+      apply: "현재 SBTi 검증 신청을 준비하고 있습니다.",
+      done: "SBTi로부터 감축 목표의 과학적 부합성을 검증받았습니다.",
+      none: "현 시점에서 SBTi 검증 계획은 수립되어 있지 않으나, 국제 기준 변화에 맞추어 단계적 검토를 진행할 계획입니다."
+    }[ans.sbti] || "";
+    
+    return `당사는 ${sc}의 1.5°C 경로를 기본 참조 기준으로 삼아 감축 목표를 수립하였습니다. 국제 표준인 GRI 102: 기후변화 2025 가이드라인을 기반으로 배출량 산정 및 검증 체계를 구축하였으며, ${mt}의 방법론을 적용하고 있습니다. 현재 내부 역량 및 데이터 품질 수준을 고려하여 점진적 고도화를 추진하고 있으며, ${sbti}`;
+  }
+};
+
+// 102-1-d: 거버넌스 서술
+const QUIZ_102_1d = {
+  title: "102-1-d · 거버넌스 체계",
+  steps: [
+    {
+      id: "board",
+      question: "이사회는 기후 관련 사안을 어떻게 다루나요?",
+      hint: "중소기업은 보통 '이사회 직접 심의'입니다.",
+      type: "single",
+      options: [
+        { key: "direct", label: "이사회가 직접 심의·승인", desc: "별도 위원회 없음 · 중소기업 기본" },
+        { key: "committee", label: "이사회 산하 ESG 위원회 운영" },
+        { key: "ceo", label: "대표이사가 최종 결정" },
+      ]
+    },
+    {
+      id: "org",
+      question: "실무를 담당하는 조직은?",
+      type: "single",
+      options: [
+        { key: "env", label: "환경안전 전담 부서", desc: "중소기업 가장 일반적" },
+        { key: "mgmt", label: "경영기획 부서" },
+        { key: "cross", label: "부서 간 협업 TF" },
+        { key: "single", label: "지정 담당자 (독립 조직 없음)" },
+      ]
+    },
+    {
+      id: "freq",
+      question: "이사회·경영진 보고 주기는?",
+      type: "single",
+      options: [
+        { key: "y1", label: "연 1회 보고", desc: "중소기업 현실적" },
+        { key: "h1", label: "반기 1회" },
+        { key: "q1", label: "분기 1회" },
+        { key: "adhoc", label: "필요 시 수시 보고" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const board = {
+      direct: "당사의 최고 의사결정기구는 이사회이며, 대표이사가 이사회 의장을 겸임합니다. 이사회는 주요 경영 현안과 ESG 관련 중요 사안을 심의·승인합니다. 당사 규모 및 운영 특성을 고려하여 별도의 ESG 위원회는 설치하지 않았습니다.",
+      committee: "당사는 이사회 산하에 ESG 위원회를 운영하고 있으며, 위원회는 기후 전략 및 주요 안건을 심의합니다.",
+      ceo: "당사의 기후 전략은 대표이사가 최종 결정하며, 관련 주요 사안은 경영진 회의체를 통해 검토됩니다."
+    }[ans.board] || "";
+    
+    const org = {
+      env: "환경안전 전담 부서가 실무 주관 조직으로 활동하며, 온실가스 배출량 산정, 감축 목표 관리, 관련 정책 이행 현황을 상시 모니터링합니다.",
+      mgmt: "경영기획 부서가 ESG 전략을 총괄하며, 각 실무 부서와 협력하여 감축 활동을 추진합니다.",
+      cross: "기후 대응 관련 TF를 운영하여 환경·생산·경영기획 등 관련 부서가 협업하는 체계로 수행됩니다.",
+      single: "지정 담당자가 기후 관련 실무를 총괄하며, 필요 시 외부 컨설팅을 활용합니다."
+    }[ans.org] || "";
+    
+    const freq = {
+      y1: "실무 부서의 점검 결과와 개선 과제는 연 1회 경영진 정기 보고를 통해 이사회에 전달되어 의사결정에 반영됩니다.",
+      h1: "반기 1회 정기적으로 이사회에 기후 관련 이행 현황을 보고합니다.",
+      q1: "분기별 점검을 통해 경영진에게 기후 대응 현황을 보고하고 있습니다.",
+      adhoc: "주요 변화 사항 발생 시 수시로 이사회에 보고하며, 정기 경영 회의체를 통해 공유됩니다."
+    }[ans.freq] || "";
+    
+    return `${board} ${org} ${freq}`;
+  }
+};
+
+// 102-1-e: 사업 전략 통합
+const QUIZ_102_1e = {
+  title: "102-1-e · 사업 전략과의 통합",
+  steps: [
+    {
+      id: "integration",
+      question: "기후 대응이 사업 전략에 어떻게 반영됩니까?",
+      type: "single",
+      options: [
+        { key: "annual", label: "연간 경영계획 수립 시 반영", desc: "중소기업 가장 일반적" },
+        { key: "midterm", label: "중장기 전략(3~5년)에 명시" },
+        { key: "kpi", label: "경영진 KPI에 포함" },
+        { key: "separate", label: "별도 기후 전략 문서 운영" },
+      ]
+    },
+    {
+      id: "budget",
+      question: "탄소 감축 예산은 어떻게 확보됩니까?",
+      type: "single",
+      options: [
+        { key: "invest", label: "설비 투자 예산의 일부로 편성", desc: "중소기업 가장 흔함" },
+        { key: "separate_budget", label: "ESG 전용 예산으로 별도 편성" },
+        { key: "project", label: "개별 과제 단위로 편성" },
+        { key: "none", label: "현재 별도 예산 없음 (향후 편성 예정)" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const int = {
+      annual: "당사는 연간 경영계획 수립 과정에서 환경안전 부서가 탄소 감축 관련 실행 과제를 발굴·제안하고, 이를 이사회 승인을 거쳐 설비 투자 예산에 반영하는 절차를 운영하고 있습니다.",
+      midterm: "당사는 중장기(3~5년) 경영 전략에 기후 대응 목표를 명시하고, 매년 진척 현황을 점검하고 있습니다.",
+      kpi: "당사는 경영진 핵심성과지표(KPI)에 탄소 감축 목표를 포함하여 경영 책임성을 강화하고 있습니다.",
+      separate: "당사는 별도의 기후 전략 문서를 수립하여 사업 전략과 연계하여 관리하고 있습니다."
+    }[ans.integration] || "";
+    
+    const bud = {
+      invest: "탄소 감축 관련 투자는 설비 투자 예산의 일부로 편성되어, 에너지 효율화·친환경 차량 전환·공정 개선 등 구체적 과제에 집행됩니다.",
+      separate_budget: "ESG 관련 전용 예산을 별도로 편성하여 체계적인 집행을 추진하고 있습니다.",
+      project: "감축 과제별로 예산을 편성하여 실행하고 있습니다.",
+      none: "현재 별도 예산은 편성되어 있지 않으나, 향후 체계적 편성을 검토할 예정입니다."
+    }[ans.budget] || "";
+    
+    return `${int} ${bud} 이를 통해 기후변화 대응이 일회성 활동이 아닌 지속적 경영 활동의 일부로 내재화되도록 노력하고 있습니다.`;
+  }
+};
+
+// 102-1-g: 공정전환 원칙 + 이해관계자 참여
+const QUIZ_102_1g = {
+  title: "102-1-g · 공정 전환 원칙",
+  steps: [
+    {
+      id: "principle",
+      question: "저탄소 전환 과정에서 직원 보호 원칙은?",
+      hint: "중소기업은 보통 '재배치·재교육 원칙' 선택.",
+      type: "single",
+      options: [
+        { key: "reassign", label: "직무 재배치 및 재교육 원칙", desc: "고용 안정 우선 · 중소기업 권장" },
+        { key: "skill", label: "기술 전환 교육 중심" },
+        { key: "communication", label: "노사 간 충분한 사전 소통" },
+      ]
+    },
+    {
+      id: "stakeholder",
+      question: "이해관계자와의 소통 채널은? (복수선택)",
+      type: "multi",
+      options: [
+        { key: "labor", label: "노사협의회 정기 운영" },
+        { key: "complaint", label: "고충처리 시스템" },
+        { key: "community", label: "지역사회 간담회" },
+        { key: "supplier", label: "공급업체 협의체" },
+        { key: "survey", label: "임직원 설문조사" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const pr = {
+      reassign: "당사는 저탄소 전환 과정에서 발생할 수 있는 임직원의 역할 변화 및 고용 안정 이슈에 대응하기 위해, '직무 재배치 및 재교육'을 공정한 전환의 기본 원칙으로 적용하고 있습니다. 산업 환경 변화나 제품·공정 변경 시 해당 인력에 대해 우선적으로 사내 전환 배치 기회를 제공하며, 직무 수행에 필요한 기술·안전 교육을 지원합니다.",
+      skill: "당사는 저탄소 전환에 따른 직원 역량 공백을 메우기 위해 기술 전환 교육을 핵심 원칙으로 삼고 있습니다.",
+      communication: "당사는 저탄소 전환 과정에서 노사 간 충분한 사전 소통을 공정한 전환의 기본 원칙으로 적용하고 있습니다."
+    }[ans.principle] || "";
+    
+    const chMap = {
+      labor: "노사협의회의 정기 운영",
+      complaint: "고충처리 시스템",
+      community: "지역사회 간담회",
+      supplier: "공급업체 협의체",
+      survey: "임직원 설문조사"
+    };
+    const chs = (ans.stakeholder || []).map(k => chMap[k]).filter(Boolean);
+    const chText = chs.length > 0
+      ? `이해관계자 참여를 위해 ${chs.join(", ")} 등 다양한 채널을 운영하며, 근로자의 의견을 정기적으로 청취하고 주요 변화 사항은 사전에 공유함으로써 구성원이 전환 과정에 능동적으로 참여할 수 있도록 합니다.`
+      : "이해관계자의 의견은 수시로 청취하여 정책에 반영하고 있습니다.";
+    
+    return `${pr} ${chText}`;
+  }
+};
+
+// 102-1-j: 전환계획 수립 상태
+const QUIZ_102_1j = {
+  title: "102-1-j · 수립 상태",
+  steps: [
+    {
+      id: "status",
+      question: "현재 전환 계획 수립 상태는?",
+      type: "single",
+      options: [
+        { key: "done", label: "수립 완료 · 시행 중" },
+        { key: "progress", label: "수립 중 (일부 완성)", desc: "중소기업 현실적" },
+        { key: "planned", label: "아직 미수립 (수립 예정)" },
+      ]
+    },
+    {
+      id: "next",
+      question: "다음 목표 시점은?",
+      type: "single",
+      options: [
+        { key: "y1", label: "당해 연도 내 완성" },
+        { key: "y2", label: "차기 보고기간(1년 내) 완성" },
+        { key: "y3", label: "중장기(2~3년 내) 완성" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const st = {
+      done: "당사는 기후변화 완화를 위한 전환 계획을 수립·시행 중이며, 매년 이행 현황을 점검하여 투명하게 공개하고 있습니다.",
+      progress: "당사는 현재 기후변화 완화를 위한 전환 계획을 체계적으로 수립 중입니다. 환경안전 부서 주도로 내부 배출 현황 분석 및 감축 잠재량 평가를 완료하였으며, 현재는 중장기 목표 및 세부 이행 과제를 구체화하는 단계에 있습니다.",
+      planned: "당사는 기후변화 완화를 위한 전환 계획을 수립 중입니다. 내부 역량 확충 및 데이터 체계 정비를 선제적으로 추진하고 있습니다."
+    }[ans.status] || "";
+    
+    const nx = {
+      y1: "당해 연도 내 전환 계획을 확정하여 공개할 예정입니다.",
+      y2: "차기 보고기간 내 공식 전환 계획을 수립·공개할 예정이며, 수립 이후에는 매년 이행 현황을 점검하고 보고서를 통해 이해관계자에게 투명하게 공유할 계획입니다.",
+      y3: "중장기적으로(2~3년 내) 전환 계획을 체계적으로 수립하여 공개할 예정입니다."
+    }[ans.next] || "";
+    
+    return `${st} ${nx}`;
+  }
+};
+
+// 102-2-b: 적응 계획 조치
+const QUIZ_102_2b = {
+  title: "102-2-b · 적응 조치",
+  steps: [
+    {
+      id: "main_risk",
+      question: "우리 회사 가장 큰 물리적 리스크는?",
+      type: "single",
+      options: [
+        { key: "power", label: "전력 공급 불안정 (정전)", desc: "대부분 중소기업 해당" },
+        { key: "flood", label: "폭우·홍수 (시설 침수)" },
+        { key: "heat", label: "폭염 (근무환경·냉방)" },
+        { key: "typhoon", label: "태풍 (시설 파손)" },
+      ]
+    },
+    {
+      id: "actions",
+      question: "대응 조치는? (복수선택)",
+      type: "multi",
+      options: [
+        { key: "inspect", label: "주요 설비 정기 점검" },
+        { key: "backup", label: "비상 전원·백업 설비 확보" },
+        { key: "drainage", label: "배수시설 관리" },
+        { key: "cooling", label: "냉방·환기 시스템 강화" },
+        { key: "supplier", label: "공급업체 다변화" },
+        { key: "training", label: "비상 대응 교육" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const risk = {
+      power: "전력 공급 불안정(정전)을 주요 물리적 리스크로 식별하여 우선 관리하고 있습니다.",
+      flood: "폭우·홍수로 인한 시설 침수 리스크를 주요 관리 대상으로 설정하고 있습니다.",
+      heat: "폭염으로 인한 근무환경 악화 및 에너지 수요 증가를 주요 리스크로 관리하고 있습니다.",
+      typhoon: "태풍으로 인한 시설 파손 리스크를 주요 관리 대상으로 설정하고 있습니다."
+    }[ans.main_risk] || "";
+    
+    const acMap = {
+      inspect: "주요 설비 및 전기 시설에 대한 정기 점검과 이상 징후 조기 발견 체계 운영",
+      backup: "비상 전원 및 백업 설비 확보를 통한 공급 안정성 확보",
+      drainage: "배수시설 정기 점검 및 관리 체계 운영",
+      cooling: "냉방·환기 시스템의 단계적 강화",
+      supplier: "주요 공급업체의 지역별 다변화",
+      training: "근로자 대상 비상 대응 교육 정례화"
+    };
+    const acs = (ans.actions || []).map(k => acMap[k]).filter(Boolean);
+    const acText = acs.length > 0
+      ? `주요 적응 조치로 ${acs.map((a, i) => `(${i+1}) ${a}`).join(", ")}를 운영하고 있습니다.`
+      : "";
+    
+    return `당사는 ${risk} ${acText} 환경안전 부서는 리스크 대응 현황을 종합적으로 모니터링하며, 경영진 정기 점검 주기에 맞춰 보고함으로써 리스크 관리의 실행력을 확보하고 있습니다.`;
+  }
+};
+
+// 102-3: 공정전환 종합 서술
+const QUIZ_102_3 = {
+  title: "102-3 · 공정한 전환",
+  steps: [
+    {
+      id: "approach",
+      question: "직원 대상 공정 전환의 핵심 접근은?",
+      type: "single",
+      options: [
+        { key: "retrain", label: "재교육 중심 (기존 직원 역량 강화)", desc: "중소기업 권장" },
+        { key: "reassign", label: "재배치 중심 (고용 유지)" },
+        { key: "both", label: "재교육 + 재배치 병행" },
+      ]
+    },
+    {
+      id: "scope",
+      question: "교육·프로그램 적용 범위는?",
+      type: "single",
+      options: [
+        { key: "affected", label: "전환 영향을 받는 직원 대상" },
+        { key: "all", label: "전 직원 대상" },
+        { key: "voluntary", label: "자발적 참여 희망자 대상" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const ap = {
+      retrain: "당사는 임직원의 고용 안정과 역량 강화를 위해 재교육 프로그램을 운영하고 있습니다.",
+      reassign: "당사는 임직원의 고용 안정을 위해 재배치 프로그램을 우선 운영하고 있습니다.",
+      both: "당사는 임직원의 고용 안정과 역량 강화를 위해 재배치 및 재교육 프로그램을 병행 운영하고 있습니다."
+    }[ans.approach] || "";
+    
+    const sc = {
+      affected: "전환 영향을 받는 직원을 우선 대상으로 하여 맞춤형 교육을 제공합니다.",
+      all: "전 직원을 대상으로 기후 대응 역량 강화 교육을 정례화하고 있습니다.",
+      voluntary: "자발적 참여를 기반으로 희망 직원에게 교육 기회를 제공합니다."
+    }[ans.scope] || "";
+    
+    return `${ap} ${sc} 참여 직원 수, 교육 시간, 참여율 등 정량 지표는 별도 관리하며, 결과는 경영진에 정기 보고됩니다.`;
+  }
+};
+
+// 102-4: 감축 목표 종합 서술
+const QUIZ_102_4 = {
+  title: "102-4 · 감축 목표 서술",
+  steps: [
+    {
+      id: "strategy",
+      question: "감축 목표의 핵심 전략은?",
+      type: "single",
+      options: [
+        { key: "efficiency", label: "에너지 효율 극대화", desc: "중소기업 권장" },
+        { key: "renewable", label: "재생에너지 확대" },
+        { key: "process", label: "공정 개선·혁신" },
+        { key: "mixed", label: "복합 전략" },
+      ]
+    },
+    {
+      id: "timeframe",
+      question: "목표 시간 범주 설정 방식은?",
+      type: "single",
+      options: [
+        { key: "short", label: "단기(1~2년) / 중기(3~5년) / 장기(10년)", desc: "중소기업 권장" },
+        { key: "long", label: "단기(5~10년) / 중기(10~15년) / 장기(2050년)" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const st = {
+      efficiency: "에너지 효율 극대화 및 운영 최적화를 중심으로 한 단계적 감축",
+      renewable: "재생에너지 조달 확대를 중심으로 한 에너지 믹스 전환",
+      process: "공정 개선 및 기술 혁신을 통한 근본적 감축",
+      mixed: "효율 개선, 재생에너지, 공정 혁신을 병행하는 복합 전략"
+    }[ans.strategy] || "";
+    
+    const tf = {
+      short: "단기(1~2년), 중기(3~5년), 장기(10년 이상)로 구분하여",
+      long: "단기(5~10년), 중기(10~15년), 장기(2050년 탄소중립)로 구분하여"
+    }[ans.timeframe] || "";
+    
+    return `당사는 ESRS의 시간 구분 기준에 따라 온실가스 감축 목표를 ${tf} 단계별로 설정하였습니다. 핵심 감축 전략은 ${st}입니다. 환경안전부를 전담 조직으로 지정하여 연 1회 배출량 산정 및 성과 점검을 수행하고 있으며, 기준연도 대비 이행 현황을 정기적으로 모니터링합니다.`;
+  }
+};
+
 // ═══════════════════════════════════════════════════════════════════════
-// 🎯 퀴즈 레이어 컴포넌트 — 한 번에 질문 1개, 진행바, 뒤로/앞으로
+// 🎯 단계별 작성 컴포넌트 — 한 번에 항목 1개, 진행바, 뒤로/앞으로
 // ═══════════════════════════════════════════════════════════════════════
 function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
   const [mode, setMode] = useState(savedText ? "saved" : "quiz"); // quiz | preview | saved | manual
   const [stepIdx, setStepIdx] = useState(0);
   const [answers, setAnswers] = useState(savedAnswers || {});
   const [manualText, setManualText] = useState(savedText || "");
+  const [editingStep, setEditingStep] = useState(null); // 특정 단계만 수정 중
   
   const steps = quiz.steps;
   const step = steps[stepIdx];
@@ -1592,27 +2155,107 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
   );
   const isLast = stepIdx === steps.length - 1;
   
-  // 저장된 답 보기 모드
+  // 답변을 사람이 읽을 수 있는 라벨로 변환
+  const renderAnswer = (stepDef, ans) => {
+    if (!ans) return <span style={{ color: T.g400 }}>(미선택)</span>;
+    if (stepDef.type === "single") {
+      const opt = stepDef.options.find(o => o.key === ans);
+      return opt?.label || ans;
+    }
+    if (stepDef.type === "multi") {
+      const labels = (ans || []).map(k => stepDef.options.find(o => o.key === k)?.label).filter(Boolean);
+      return labels.length ? labels.join(", ") : <span style={{ color: T.g400 }}>(미선택)</span>;
+    }
+    return String(ans);
+  };
+  
+  // 저장된 답 보기 모드 (새로운 프로세스 표시 형태)
   if (mode === "saved") {
     return (
-      <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}`, borderRadius: 10, padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 14 }}>✅</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.emerald }}>답변 완료</span>
+      <div>
+        {/* 헤더 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.emerald, padding: "3px 10px", borderRadius: 4 }}>
+            ✅ 작성 완료
+          </span>
+          <span style={{ fontSize: 11, color: T.g500 }}>{steps.length}개 항목 모두 선택됨</span>
           {!disabled && (
-            <button onClick={() => { setMode("quiz"); setStepIdx(0); }}
-              style={{ marginLeft: "auto", fontSize: 11, color: T.blue, background: T.white, border: `1px solid ${T.blue}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
-              🔄 다시 풀기
-            </button>
-          )}
-          {!disabled && (
-            <button onClick={() => setMode("manual")}
-              style={{ fontSize: 11, color: T.g600, background: T.white, border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
-              ✏️ 직접 수정
+            <button onClick={() => { 
+              setMode("quiz"); 
+              setStepIdx(0); 
+              setAnswers({}); 
+            }}
+              style={{ 
+                marginLeft: "auto", fontSize: 11, color: T.rose, 
+                background: T.white, border: `1px solid ${T.rose}`, 
+                padding: "4px 10px", borderRadius: 4, cursor: "pointer", fontWeight: 500
+              }}>
+              🔄 처음부터 다시 작성
             </button>
           )}
         </div>
-        <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{savedText}</p>
+        
+        {/* 작성 프로세스 전체 표시 */}
+        <div style={{ background: T.g50, border: `1px solid ${T.g200}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.g600, marginBottom: 12, letterSpacing: "0.04em" }}>
+            📋 작성하신 내용
+          </p>
+          {steps.map((s, i) => (
+            <div key={s.id} style={{
+              display: "flex", alignItems: "flex-start", gap: 10,
+              padding: "10px 0",
+              borderTop: i > 0 ? `1px solid ${T.g200}` : "none"
+            }}>
+              <span style={{
+                flexShrink: 0, width: 22, height: 22, borderRadius: "50%",
+                background: T.emerald, color: T.white, fontSize: 11, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", justifyContent: "center"
+              }}>{i + 1}</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 12, color: T.g500, marginBottom: 3 }}>
+                  {s.question}
+                </p>
+                <p style={{ fontSize: 13, fontWeight: 600, color: T.g800, margin: 0 }}>
+                  → {renderAnswer(s, answers[s.id])}
+                </p>
+              </div>
+              {!disabled && (
+                <button onClick={() => { 
+                  setEditingStep(i); 
+                  setStepIdx(i); 
+                  setMode("quiz"); 
+                }}
+                  style={{
+                    fontSize: 11, color: T.blue, background: T.blueBg,
+                    border: "none", padding: "4px 10px", borderRadius: 4, 
+                    cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap"
+                  }}>
+                  ✏️ 이것만 수정
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        {/* 자동 생성 서술문 */}
+        <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.violet }}>📝 자동 생성된 서술문</span>
+            {!disabled && (
+              <button onClick={() => setMode("manual")}
+                style={{
+                  marginLeft: "auto", fontSize: 11, color: T.g600,
+                  background: T.white, border: `1px solid ${T.g300}`,
+                  padding: "3px 8px", borderRadius: 4, cursor: "pointer"
+                }}>
+                ✏️ 서술문 직접 수정
+              </button>
+            )}
+          </div>
+          <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>
+            {savedText}
+          </p>
+        </div>
       </div>
     );
   }
@@ -1622,14 +2265,14 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.g600 }}>✏️ 직접 서술</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.g600 }}>✏️ 서술문 직접 수정</span>
           <button onClick={() => setMode(savedText ? "saved" : "quiz")}
             style={{ marginLeft: "auto", fontSize: 11, color: T.g500, background: "none", border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
             ← 취소
           </button>
         </div>
         <textarea value={manualText} onChange={e => setManualText(e.target.value)}
-          disabled={disabled} rows={6}
+          disabled={disabled} rows={8}
           style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1px solid ${T.g200}`, fontSize: 13, lineHeight: 1.7, fontFamily: "inherit", resize: "vertical" }}/>
         <button onClick={() => { onSave({ answers, text: manualText }); setMode("saved"); }}
           disabled={!manualText.trim()}
@@ -1645,19 +2288,43 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
     const text = quiz.assemble(answers);
     return (
       <div>
-        <div style={{ background: T.violetBg, border: `1px solid ${T.violet}`, borderRadius: 10, padding: 16, marginBottom: 12 }}>
+        {/* 작성한 항목 요약 (미리보기에도 표시) */}
+        <div style={{ background: T.g50, border: `1px solid ${T.g200}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.g600, marginBottom: 10, letterSpacing: "0.04em" }}>📋 작성 내용 확인</p>
+          {steps.map((s, i) => (
+            <div key={s.id} style={{
+              padding: "8px 0",
+              borderTop: i > 0 ? `1px solid ${T.g200}` : "none",
+              display: "flex", gap: 10
+            }}>
+              <span style={{
+                flexShrink: 0, width: 20, height: 20, borderRadius: "50%",
+                background: T.emerald, color: T.white, fontSize: 10, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", justifyContent: "center"
+              }}>{i + 1}</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 11, color: T.g500, margin: "0 0 2px" }}>{s.question}</p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: T.g800, margin: 0 }}>→ {renderAnswer(s, answers[s.id])}</p>
+              </div>
+              <button onClick={() => { setStepIdx(i); setMode("quiz"); }}
+                style={{
+                  fontSize: 10, color: T.blue, background: T.blueBg,
+                  border: "none", padding: "3px 8px", borderRadius: 4, cursor: "pointer",
+                  alignSelf: "flex-start", whiteSpace: "nowrap"
+                }}>✏️ 수정</button>
+            </div>
+          ))}
+        </div>
+        
+        <div style={{ background: T.violetBg, border: `1px solid ${T.violet}`, borderRadius: 10, padding: 14, marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.violet, marginBottom: 8 }}>📝 자동 생성된 서술문 (미리보기)</div>
-          <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7 }}>{text}</p>
+          <p style={{ fontSize: 13, color: T.g800, lineHeight: 1.7, margin: 0 }}>{text}</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => { onSave({ answers, text }); setMode("saved"); }}
             disabled={disabled}
             style={{ flex: 1, padding: "10px 16px", background: T.emerald, color: T.white, border: "none", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             ✅ 이대로 저장
-          </button>
-          <button onClick={() => setStepIdx(0)}
-            style={{ padding: "10px 16px", background: T.white, color: T.g600, border: `1px solid ${T.g300}`, borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
-            🔄 다시 풀기
           </button>
           <button onClick={() => { setManualText(text); setMode("manual"); }}
             style={{ padding: "10px 16px", background: T.white, color: T.g600, border: `1px solid ${T.g300}`, borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
@@ -1668,7 +2335,7 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
     );
   }
   
-  // 퀴즈 모드
+  // 작성 모드 (단계별)
   const select = (v) => {
     setAnswers(prev => ({ ...prev, [step.id]: v }));
   };
@@ -1679,15 +2346,43 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
     });
   };
   
+  // 이 단계만 수정 모드인 경우: 저장 후 saved로 바로 복귀
+  const handleNextOrSave = () => {
+    if (editingStep !== null) {
+      // 특정 단계만 수정 중 → 완료 후 바로 saved 복귀하며 서술문 재조립
+      const newText = quiz.assemble(answers);
+      onSave({ answers, text: newText });
+      setEditingStep(null);
+      setMode("saved");
+    } else if (isLast) {
+      setMode("preview");
+    } else {
+      setStepIdx(stepIdx + 1);
+    }
+  };
+  
   return (
     <div>
-      {/* 진행바 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: T.g500 }}>{stepIdx + 1} / {steps.length}</span>
-        <div style={{ flex: 1, height: 6, background: T.g100, borderRadius: 999, overflow: "hidden" }}>
-          <div style={{ width: `${progress}%`, height: "100%", background: T.emerald, transition: "width 0.3s" }}/>
+      {/* 진행 표시 — editingStep 모드일 때는 '이 항목만 수정 중' 뱃지 */}
+      {editingStep !== null ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16,
+          background: T.blueBg, border: `1px solid ${T.blue}33`, padding: "8px 12px", borderRadius: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.blue }}>✏️ 이 항목만 수정 중</span>
+          <span style={{ fontSize: 11, color: T.g600 }}>· 저장하면 완료 화면으로 돌아갑니다</span>
+          <button onClick={() => { setEditingStep(null); setMode("saved"); }}
+            style={{ marginLeft: "auto", fontSize: 11, color: T.g500, background: "none", 
+              border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
+            ← 취소
+          </button>
         </div>
-      </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.g500 }}>작성 진행: {stepIdx + 1} / {steps.length}</span>
+          <div style={{ flex: 1, height: 6, background: T.g100, borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ width: `${progress}%`, height: "100%", background: T.emerald, transition: "width 0.3s" }}/>
+          </div>
+        </div>
+      )}
       
       {/* 질문 */}
       <div style={{ marginBottom: 16 }}>
@@ -1737,13 +2432,13 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
       
       {/* 네비게이션 */}
       <div style={{ display: "flex", gap: 8 }}>
-        {stepIdx > 0 && (
+        {stepIdx > 0 && editingStep === null && (
           <button onClick={() => setStepIdx(stepIdx - 1)}
             style={{ padding: "10px 14px", background: T.white, color: T.g600, border: `1px solid ${T.g300}`, borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
             ← 이전
           </button>
         )}
-        <button onClick={() => isLast ? setMode("preview") : setStepIdx(stepIdx + 1)}
+        <button onClick={handleNextOrSave}
           disabled={!canNext}
           style={{
             flex: 1, padding: "10px 16px",
@@ -1751,7 +2446,7 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
             border: "none", borderRadius: 6, fontSize: 14, fontWeight: 600,
             cursor: canNext ? "pointer" : "not-allowed"
           }}>
-          {isLast ? "📝 서술문 확인하기 →" : "다음 →"}
+          {editingStep !== null ? "💾 저장하고 완료 화면으로" : (isLast ? "📝 작성 결과 보기 →" : "다음 →")}
         </button>
       </div>
     </div>
@@ -1784,9 +2479,9 @@ const GRI102_FIELDS = {
         glossary: "IPCC_AR6",
         options: ["IPCC AR6 (권장)", "IEA Net Zero 2050", "NGFS", "기타"],
         hint: "최소 1개 선택. 중소기업은 IPCC AR6만 체크해도 충분." },
-      { id: "1b_scenario_desc", gri: "102-1-b", label: "방법론 서술", type: "textarea", rows: 3,
+      { id: "1b_scenario_desc", gri: "102-1-b", label: "방법론 서술", type: "quiz", quiz: "102-1b",
         glossary: "GHG_PROTOCOL",
-        template: YC_TEMPLATES["1b_scenario"] },
+        hint: "3개 항목을 선택하시면 방법론 서술문이 자동 생성됩니다." },
       { id: "1c_capex", gri: "102-1-c", label: "CapEx (자본적 지출)", type: "number", unit: "백만원",
         glossary: "CAPEX_OPEX",
         hint: "전환계획 관련 설비·인프라 투자 금액" },
@@ -1798,23 +2493,24 @@ const GRI102_FIELDS = {
       { id: "1d_committee", gri: "102-1-d", label: "거버넌스 구조", type: "radio",
         options: ["이사회 산하 ESG위원회 있음", "이사회가 직접 심의 (별도 위원회 없음)", "수립 예정"],
         hint: "중소기업 대부분은 '이사회 직접 심의' 선택" },
-      { id: "1d_desc", gri: "102-1-d", label: "거버넌스 서술", type: "textarea", rows: 4,
-        template: YC_TEMPLATES["1d_gov"] },
-      { id: "1e_integration", gri: "102-1-e", label: "사업 전략 통합", type: "textarea", rows: 3,
-        template: YC_TEMPLATES["1e_strategy"] },
+      { id: "1d_desc", gri: "102-1-d", label: "거버넌스 서술", type: "quiz", quiz: "102-1d",
+        hint: "3개 항목을 선택하시면 거버넌스 서술문이 자동 생성됩니다." },
+      { id: "1e_integration", gri: "102-1-e", label: "사업 전략 통합", type: "quiz", quiz: "102-1e",
+        hint: "2개 항목을 선택하시면 서술문이 자동 생성됩니다." },
       { id: "1f_phaseout", gri: "102-1-f-ii", label: "화석연료 단계 폐지 목표", type: "textarea", rows: 2,
         hint: "해당 없으면 '당사는 석탄·중유 등 폐지 대상 화석연료를 직접 사용하지 않음' 기재.",
         placeholder: "해당 없음 또는: 2030년까지 보일러 LNG 의존도 -30%" },
-      { id: "1g_just_transition", gri: "102-1-g", label: "공정 전환 원칙", type: "textarea", rows: 3,
-        template: YC_TEMPLATES["1g_just"] },
+      { id: "1g_just_transition", gri: "102-1-g", label: "공정 전환 원칙", type: "quiz", quiz: "102-1g",
+        glossary: "JUST_TRANSITION",
+        hint: "2개 항목을 선택하시면 공정 전환 서술문이 자동 생성됩니다." },
       { id: "1h_biodiversity", gri: "102-1-h-ii", label: "생물다양성 영향", type: "radio",
         options: ["해당 없음 (사업 규모·특성상 유의미한 영향 없음)", "있음 (별도 서술)"] },
       { id: "1i_lobby", gri: "102-1-i", label: "로비·공공정책 활동", type: "radio",
         options: ["해당 없음 (직접적 공공정책 활동 없음)", "있음 (별도 서술)"] },
       { id: "1i_associations", gri: "102-1-i", label: "소속 협회 (복수선택)", type: "checkbox",
         options: ["대한상공회의소", "중소기업중앙회", "한국화학산업협회", "한국반도체산업협회", "기타"] },
-      { id: "1j_status", gri: "102-1-j", label: "전환 계획 수립 상태", type: "radio",
-        options: ["수립 완료", "수립 중", "미수립 (사유 있음)"] },
+      { id: "1j_status", gri: "102-1-j", label: "전환 계획 수립 상태", type: "quiz", quiz: "102-1j",
+        hint: "2개 항목을 선택하시면 수립 상태 서술문이 자동 생성됩니다." },
     ]
   },
   "102-3": {
@@ -1840,8 +2536,8 @@ const GRI102_FIELDS = {
       { id: "3g_living_wage", gri: "102-3-g", label: "생활임금 이상 받는 직원 비율", type: "number", unit: "%",
         glossary: "LIVING_WAGE",
         hint: "해당 지역 기본 생활 수준 이상 급여를 받는 직원 비율. 100이면 전원." },
-      { id: "3_narrative", gri: "102-3", label: "공정전환 종합 서술", type: "textarea", rows: 4,
-        template: YC_TEMPLATES["3_just"] },
+      { id: "3_narrative", gri: "102-3", label: "공정전환 종합 서술", type: "quiz", quiz: "102-3",
+        hint: "2개 항목을 선택하시면 공정전환 서술문이 자동 생성됩니다." },
     ]
   },
   "102-4": {
@@ -1874,8 +2570,8 @@ const GRI102_FIELDS = {
       { id: "4k_methodology", gri: "102-4-k", label: "사용 기준·방법론", type: "checkbox",
         glossary: "IPCC_2006",
         options: ["GHG Protocol", "IPCC 2006 가이드라인", "환경부고시 제2024-155호 배출계수", "GWP AR5 (CH₄=28, N₂O=265)"] },
-      { id: "4_narrative", gri: "102-4", label: "감축 목표 종합 서술", type: "textarea", rows: 4,
-        template: YC_TEMPLATES["4_target"] },
+      { id: "4_narrative", gri: "102-4", label: "감축 목표 종합 서술", type: "quiz", quiz: "102-4",
+        hint: "2개 항목을 선택하시면 감축 목표 서술문이 자동 생성됩니다." },
     ]
   },
   "102-2": {
@@ -1885,9 +2581,8 @@ const GRI102_FIELDS = {
       { id: "2a_risks", gri: "102-2-a", label: "식별된 물리적 위험 (복수선택)", type: "checkbox",
         options: ["폭염 (근무환경·전력수요)", "폭우·홍수 (시설 침수)", "태풍 (시설 파손)", 
                   "정전 (공급 불안정) ← 와이씨켐 대표", "가뭄 (용수 부족)", "산불", "기타"] },
-      { id: "2b_actions", gri: "102-2-b-i", label: "적응 조치", type: "textarea", rows: 3,
-        placeholder: "예: 발전기 보유, 배수시설 정기 점검, 냉방 강화, 공급업체 다변화",
-        template: "당사는 식별된 물리적 리스크에 대응하기 위해 정기적인 설비 점검과 비상 대응 체계를 운영하고 있습니다. 환경안전부는 리스크 대응 현황을 종합적으로 모니터링하며, 경영진의 정기 점검 주기에 맞춰 보고함으로써 리스크 관리의 실행력을 확보하고 있습니다." },
+      { id: "2b_actions", gri: "102-2-b-i", label: "적응 조치 서술", type: "quiz", quiz: "102-2b",
+        hint: "2개 항목을 선택하시면 적응 조치 서술문이 자동 생성됩니다." },
       { id: "2c_capex", gri: "102-2-b-iii", label: "적응 관련 지출 (CapEx)", type: "number", unit: "백만원" },
       { id: "2c_opex", gri: "102-2-b-iii", label: "적응 관련 지출 (OpEx)", type: "number", unit: "백만원" },
       { id: "2d_gov", gri: "102-2-b-iv", label: "감독 거버넌스", type: "textarea", rows: 2,
@@ -1929,9 +2624,19 @@ function SubField({ field, value, onChange, disabled }) {
   
   const renderInput = () => {
     if (field.type === "quiz") {
-      const quizMap = { "102-1a": QUIZ_102_1a };
+      const quizMap = { 
+        "102-1a": QUIZ_102_1a,
+        "102-1b": QUIZ_102_1b,
+        "102-1d": QUIZ_102_1d,
+        "102-1e": QUIZ_102_1e,
+        "102-1g": QUIZ_102_1g,
+        "102-1j": QUIZ_102_1j,
+        "102-2b": QUIZ_102_2b,
+        "102-3": QUIZ_102_3,
+        "102-4": QUIZ_102_4,
+      };
       const quiz = quizMap[field.quiz];
-      if (!quiz) return <div style={{ color: T.rose }}>퀴즈 '{field.quiz}' 미정의</div>;
+      if (!quiz) return <div style={{ color: T.rose }}>작성 트리 '{field.quiz}' 미정의</div>;
       return (
         <QuizLayered 
           quiz={quiz}
@@ -2233,6 +2938,9 @@ function GRI102AdvancedPanel({ disclosureCode, blockData, setBlockData, disabled
         </div>
         <p style={{ fontSize: 13, color: T.g500, lineHeight: 1.6 }}>{disclosure.desc}</p>
       </div>
+      
+      {/* 📘 공시 일반 설명 박스 */}
+      <DisclosureGuide code={disclosureCode}/>
       
       {disclosure.fields.map(field => (
         <SubField key={field.id} field={field} 
