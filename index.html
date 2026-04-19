@@ -173,11 +173,14 @@ function Scope1P({ data, set, ud }) {
             <tbody>{fuels.map((f,i) => {
               const em = calc(data[f.id]||0,f.ncv,f.co2,f.ch4,f.n2o); sum += em.t;
               const canEdit = ce(f.dept);
-              return <tr key={f.id} style={{ borderBottom: i < fuels.length-1 ? `1px solid ${T.g100}` : "none" }}>
+              const val = data[f.id] || "";
+              const needInput = canEdit && ud !== "all" && !val;
+              return <tr key={f.id} style={{ borderBottom: i < fuels.length-1 ? `1px solid ${T.g100}` : "none", background: needInput ? '#fff5f5' : "transparent" }}>
                 <td style={{ padding:"10px 14px", fontWeight:500, color:T.g800 }}>{f.name}</td>
                 <td style={{ padding:"6px 4px", textAlign:"right" }}>
-                  <input type="number" step="0.01" value={data[f.id]||""} disabled={!canEdit} onChange={e => set(f.id,parseFloat(e.target.value)||0)}
-                    style={{ width:90, padding:"7px 10px", borderRadius:6, border:`1px solid ${T.g200}`, background: canEdit ? T.white : T.g50, color:T.g900, textAlign:"right", fontSize:14, fontWeight:600, opacity: canEdit ? 1 : 0.5 }} />
+                  <input type="number" step="0.01" value={val} disabled={!canEdit} onChange={e => set(f.id,parseFloat(e.target.value)||0)}
+                    placeholder={needInput ? "입력 필요" : ""}
+                    style={{ width:100, padding:"7px 10px", borderRadius:6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: canEdit ? T.white : T.g50, color:T.g900, textAlign:"right", fontSize:14, fontWeight:600, opacity: canEdit ? 1 : 0.5 }} />
                 </td>
                 <td style={{ padding:"10px 14px", textAlign:"right", fontSize:12, color:T.g500 }}>{f.u}</td>
                 <td style={{ padding:"10px 14px", textAlign:"right", color:T.g500, fontSize:13 }}>{em.e.toFixed(2)}</td>
@@ -222,11 +225,13 @@ function Scope2P({ data, set, ud }) {
           const mwh = kwh / 1000;
           const co2 = mwh * EFS2;
           total += co2;
-          return <tr key={i} style={{ borderBottom: i < 11 ? `1px solid ${T.g100}` : "none" }}>
+          const needInput = ce && ud !== "all" && !kwh;
+          return <tr key={i} style={{ borderBottom: i < 11 ? `1px solid ${T.g100}` : "none", background: needInput ? '#fff5f5' : "transparent" }}>
             <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{m}</td>
             <td style={{ padding: "6px 4px", textAlign: "right" }}>
               <input type="number" value={data[i] || ""} disabled={!ce} onChange={e => set(i, parseFloat(e.target.value) || 0)}
-                style={{ width: 120, padding: "7px 10px", borderRadius: 6, border: `1px solid ${T.g200}`, background: ce ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 14, fontWeight: 600, opacity: ce ? 1 : 0.5 }} />
+                placeholder={needInput ? "입력 필요" : ""}
+                style={{ width: 130, padding: "7px 10px", borderRadius: 6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: ce ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 14, fontWeight: 600, opacity: ce ? 1 : 0.5 }} />
             </td>
             <td style={{ padding: "10px 14px", textAlign: "right", color: T.g500, fontSize: 13 }}>{mwh.toFixed(3)}</td>
             <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g900, fontFeatureSettings: "'tnum'" }}>{co2.toFixed(2)}</td>
@@ -255,14 +260,16 @@ function Scope3P({ data, set, ud }) {
           const mine = ce(c.dept);
           const cost = data[c.id] || 0;
           const em = c.ef ? cost * c.ef : 0;
-          return <tr key={c.id} style={{ borderBottom: i < S3.length - 1 ? `1px solid ${T.g100}` : "none", opacity: mine ? 1 : 0.5 }}>
+          const needInput = mine && ud !== "all" && !cost && c.id !== "c7";
+          return <tr key={c.id} style={{ borderBottom: i < S3.length - 1 ? `1px solid ${T.g100}` : "none", opacity: mine ? 1 : 0.5, background: needInput ? '#fff5f5' : "transparent" }}>
             <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{c.c}</td>
             <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{c.name}</td>
             <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{DEPTS[c.dept].name.split(" · ")[0]}</td>
             <td style={{ padding: "6px 4px", textAlign: "right" }}>
               {c.id === "c7" ? <span style={{ fontSize: 12, color: T.g400 }}>별도 산정</span> :
                 <input type="number" value={data[c.id] || ""} disabled={!mine} onChange={e => set(c.id, parseFloat(e.target.value) || 0)}
-                  style={{ width: 100, padding: "7px 10px", borderRadius: 6, border: `1px solid ${T.g200}`, background: mine ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 13, opacity: mine ? 1 : 0.5 }} />}
+                  placeholder={needInput ? "입력 필요" : ""}
+                  style={{ width: 110, padding: "7px 10px", borderRadius: 6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: mine ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 13, opacity: mine ? 1 : 0.5, fontWeight: needInput ? 600 : 400 }} />}
             </td>
             <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, color: T.g500 }}>{c.ef || "-"}</td>
             <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g900, fontFeatureSettings: "'tnum'" }}>{em.toFixed(1)}</td>
