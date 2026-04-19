@@ -3566,6 +3566,356 @@ const QUIZ_2_GOVERNANCE = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
+// 마무리 퀴즈 6종 — 남은 서술 칸 퀴즈화
+// ═══════════════════════════════════════════════════════════════════════
+
+// GRI 103 기준연도 선택 근거
+const QUIZ_103_BASE_REASON = {
+  title: "103 · 기준연도 선택 근거",
+  intro: "2개 항목을 선택하시면 기준연도 선택 근거 문안이 완성됩니다.",
+  steps: [
+    {
+      id: "reason",
+      question: "기준연도를 이렇게 정한 이유는?",
+      type: "single",
+      options: [
+        { key: "esg_start", label: "ESG 경영 선언 연도" },
+        { key: "data_start", label: "에너지 데이터 체계적 측정 시작 연도" },
+        { key: "stable", label: "생산 규모 안정화 첫 해" },
+        { key: "first_report", label: "첫 지속가능경영 보고서 발간 연도" },
+      ]
+    },
+    {
+      id: "reliability",
+      question: "데이터 신뢰성은?",
+      type: "single",
+      options: [
+        { key: "verified", label: "제3자 검증 완료" },
+        { key: "internal", label: "내부 검증 완료" },
+        { key: "legal", label: "법정 보고 기준 준수" },
+        { key: "basic", label: "내부 집계 기준" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const r = {
+      esg_start: "당사가 ESG 경영을 본격 선언한 연도",
+      data_start: "에너지 데이터를 체계적으로 측정하기 시작한 연도",
+      stable: "생산 규모가 안정화된 첫 해",
+      first_report: "첫 지속가능경영 보고서를 발간한 연도"
+    }[ans.reason] || "";
+    const rel = {
+      verified: "로, 제3자 검증을 완료한 신뢰 가능한 데이터를 확보하였습니다",
+      internal: "로, 내부 검증 절차를 거친 데이터를 확보하였습니다",
+      legal: "로, 법정 보고 기준에 따라 산정된 데이터입니다",
+      basic: "로, 내부 집계 기준에 따라 산정된 데이터입니다"
+    }[ans.reliability] || "";
+    return `${r}이며${rel}.`;
+  }
+};
+
+// GRI 103 에너지 목표 수치
+const QUIZ_103_TARGET = {
+  title: "103 · 에너지 관리 목표",
+  intro: "3개 항목을 선택하시면 목표 문안이 완성됩니다.",
+  steps: [
+    {
+      id: "short",
+      question: "단기 목표 (1~3년)?",
+      type: "single",
+      options: [
+        { key: "1", label: "연 1% 감축" },
+        { key: "15", label: "연 1.5% 감축" },
+        { key: "2", label: "연 2% 감축" },
+        { key: "3", label: "연 3% 감축" },
+      ]
+    },
+    {
+      id: "mid",
+      question: "중기 목표 (~2030년)?",
+      type: "single",
+      options: [
+        { key: "5", label: "누적 5% 감축" },
+        { key: "10", label: "누적 10% 감축" },
+        { key: "15", label: "누적 15% 감축" },
+        { key: "20", label: "누적 20% 감축" },
+      ]
+    },
+    {
+      id: "long",
+      question: "장기 목표 (재생에너지 비중)?",
+      type: "single",
+      options: [
+        { key: "10", label: "2035년 재생에너지 10% 이상" },
+        { key: "30", label: "2035년 재생에너지 30% 이상" },
+        { key: "50", label: "2040년 재생에너지 50% 이상" },
+        { key: "none", label: "구체 수치 없음" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const s = { "1": "연 1%", "15": "연 1.5%", "2": "연 2%", "3": "연 3%" }[ans.short] || "";
+    const m = { "5": "누적 5%", "10": "누적 10%", "15": "누적 15%", "20": "누적 20%" }[ans.mid] || "";
+    const l = {
+      "10": "2035년까지 재생에너지 비중 10% 이상",
+      "30": "2035년까지 재생에너지 비중 30% 이상",
+      "50": "2040년까지 재생에너지 비중 50% 이상",
+      none: "재생에너지 비중 확대"
+    }[ans.long] || "";
+    return `단기 목표(1~3년)로 ${s} 감축, 중기 목표(~2030년)로 ${m} 감축을 설정하였으며, 장기적으로는 ${l}을(를) 추진합니다.`;
+  }
+};
+
+// GRI 306 재활용 활동 + 법규
+const QUIZ_306_ACTIVITIES = {
+  title: "306 · 재활용·감량 활동",
+  intro: "3개 항목을 선택하시면 활동 문안이 완성됩니다.",
+  steps: [
+    {
+      id: "recycle",
+      question: "주요 재활용 활동은?",
+      type: "single",
+      options: [
+        { key: "solvent", label: "공정 폐용제 재회수·재사용" },
+        { key: "packaging", label: "포장재 간소화·재사용" },
+        { key: "byproduct", label: "부산물 자원화" },
+        { key: "none", label: "해당 없음" },
+      ]
+    },
+    {
+      id: "reduction",
+      question: "감량 활동은?",
+      type: "single",
+      options: [
+        { key: "process", label: "공정 최적화로 발생 원천 저감" },
+        { key: "design", label: "제품 설계 단계 감량 반영" },
+        { key: "digital", label: "디지털 전환 (종이 사용 감축)" },
+        { key: "none", label: "해당 없음" },
+      ]
+    },
+    {
+      id: "cert",
+      question: "보유 인증은?",
+      type: "single",
+      options: [
+        { key: "iso14", label: "ISO 14001 환경경영" },
+        { key: "olbaro", label: "올바로시스템 등록" },
+        { key: "both", label: "ISO 14001 + 올바로시스템" },
+        { key: "none", label: "미보유 (계획 중)" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const r = {
+      solvent: "공정 폐용제를 재회수·재사용하여",
+      packaging: "포장재 간소화 및 재사용을 통해",
+      byproduct: "부산물을 자원화하여",
+      none: ""
+    }[ans.recycle] || "";
+    const red = {
+      process: "공정 최적화로 폐기물 발생을 원천 저감하고",
+      design: "제품 설계 단계에서 감량을 반영하고",
+      digital: "디지털 전환을 통해 종이 사용을 감축하고",
+      none: ""
+    }[ans.reduction] || "";
+    const c = {
+      iso14: "ISO 14001 환경경영시스템 인증을 보유합니다.",
+      olbaro: "폐기물처리실적시스템(올바로)에 등록·관리합니다.",
+      both: "ISO 14001 인증 및 올바로시스템 등록을 통해 이중 관리합니다.",
+      none: "향후 ISO 14001 인증 도입을 추진합니다."
+    }[ans.cert] || "";
+    const prefix = r && red ? `${r} 재활용률을 제고하며, ${red} 발생량을 저감합니다.` :
+                   r ? `${r} 재활용을 추진합니다.` :
+                   red ? `${red} 발생량을 저감합니다.` : "";
+    return `${prefix} ${c}`.trim();
+  }
+};
+
+// GRI 303 감축 활동
+const QUIZ_303_REDUCTION = {
+  title: "303 · 취수량 감축 활동",
+  intro: "3개 항목을 선택하시면 감축 활동 문안이 완성됩니다.",
+  steps: [
+    {
+      id: "cooling",
+      question: "냉각수 관리는?",
+      type: "single",
+      options: [
+        { key: "recirc", label: "냉각수 재순환 시스템 도입" },
+        { key: "once", label: "단회 통과 (향후 개선 예정)" },
+        { key: "none", label: "해당 없음" },
+      ]
+    },
+    {
+      id: "process",
+      question: "공정수 절감은?",
+      type: "single",
+      options: [
+        { key: "ro", label: "고효율 RO막 교체·회수율 개선" },
+        { key: "reuse", label: "공정수 재이용 시스템" },
+        { key: "opt", label: "공정 최적화로 용수량 저감" },
+        { key: "none", label: "해당 없음" },
+      ]
+    },
+    {
+      id: "monitor",
+      question: "모니터링은?",
+      type: "single",
+      options: [
+        { key: "tms", label: "수질 TMS 상시 운영" },
+        { key: "quarterly", label: "분기별 수질검사" },
+        { key: "annual", label: "연 1회 측정" },
+        { key: "none", label: "법정 기준만" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const c = {
+      recirc: "냉각수 재순환 시스템을 도입하여 취수량을 저감하였으며",
+      once: "기존 단회 통과 방식에서 재순환 방식으로의 전환을 계획하고 있으며",
+      none: ""
+    }[ans.cooling] || "";
+    const p = {
+      ro: "고효율 RO막 교체를 통해 회수율을 개선하고",
+      reuse: "공정수 재이용 시스템을 구축하고",
+      opt: "공정 최적화를 통해 용수 사용량을 저감하고",
+      none: ""
+    }[ans.process] || "";
+    const m = {
+      tms: "수질 자동측정시스템(TMS)을 통해 상시 모니터링합니다.",
+      quarterly: "분기별 수질검사로 관리합니다.",
+      annual: "연 1회 수질 측정을 통해 관리합니다.",
+      none: "법정 측정 기준을 준수합니다."
+    }[ans.monitor] || "";
+    const parts = [c, p].filter(Boolean);
+    const prefix = parts.length === 2 ? parts.join(", ") : (parts[0] || "용수 사용 효율 개선 활동을 추진하며");
+    return `${prefix}. ${m}`;
+  }
+};
+
+// GRI 403 보건 서비스 + 교육
+const QUIZ_403_HEALTH_EDU = {
+  title: "403 · 보건 서비스·교육",
+  intro: "3개 항목을 선택하시면 보건·교육 문안이 완성됩니다.",
+  steps: [
+    {
+      id: "health",
+      question: "보건 서비스는?",
+      type: "single",
+      options: [
+        { key: "in", label: "사내 보건관리자 상주" },
+        { key: "out", label: "보건관리대행기관 월 1회 상주" },
+        { key: "outsource", label: "외부 의료기관 제휴" },
+        { key: "basic", label: "법정 최소 기준" },
+      ]
+    },
+    {
+      id: "checkup",
+      question: "건강검진은?",
+      type: "single",
+      options: [
+        { key: "full", label: "정기검진 100% + 특수검진 반기별" },
+        { key: "annual", label: "정기검진 연 1회" },
+        { key: "legal", label: "법정 기준" },
+      ]
+    },
+    {
+      id: "training",
+      question: "안전교육 시간은?",
+      type: "single",
+      options: [
+        { key: "24", label: "신입 24시간 + 분기 12시간" },
+        { key: "legal", label: "법정 기준 (분기 6시간)" },
+        { key: "foreign", label: "외국인 근로자 모국어 교육 포함" },
+        { key: "basic", label: "연 1회 정기교육" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const h = {
+      in: "사내 보건관리자가 상주하여",
+      out: "협력 보건관리대행기관이 월 1회 상주하여",
+      outsource: "외부 의료기관과 제휴하여",
+      basic: "법정 최소 기준에 따라"
+    }[ans.health] || "";
+    const c = {
+      full: "임직원 정기 건강검진을 100% 실시하며 특수검진을 반기별로 시행합니다",
+      annual: "정기 건강검진을 연 1회 실시합니다",
+      legal: "법정 기준에 따라 건강검진을 실시합니다"
+    }[ans.checkup] || "";
+    const t = {
+      "24": "신입 임직원 대상 안전교육 24시간 및 분기별 정기교육 12시간을 운영합니다.",
+      legal: "법정 기준(분기 6시간)의 안전교육을 운영합니다.",
+      foreign: "외국인 근로자에 대해 모국어 교육을 포함한 안전교육을 운영합니다.",
+      basic: "연 1회 정기 안전교육을 운영합니다."
+    }[ans.training] || "";
+    return `${h} 임직원 건강을 관리하며, ${c}. ${t}`;
+  }
+};
+
+// GRI 2 반부패 정책 + 신고 채널
+const QUIZ_2_ANTICORRUPTION = {
+  title: "GRI 205 · 반부패 정책 및 신고",
+  intro: "3개 항목을 선택하시면 반부패 문안이 완성됩니다.",
+  steps: [
+    {
+      id: "code",
+      question: "임직원 행동 규범은?",
+      type: "single",
+      options: [
+        { key: "code", label: "임직원 행동강령 제정·공표" },
+        { key: "policy", label: "윤리경영 방침 수립" },
+        { key: "both", label: "행동강령 + 윤리방침 통합 체계" },
+        { key: "basic", label: "내부 규정" },
+      ]
+    },
+    {
+      id: "pledge",
+      question: "준법 서약 체계는?",
+      type: "single",
+      options: [
+        { key: "annual", label: "연 1회 서약서 징구" },
+        { key: "semi", label: "반기별 서약서 징구" },
+        { key: "hire", label: "입사 시 1회만" },
+        { key: "none", label: "별도 서약 없음" },
+      ]
+    },
+    {
+      id: "channel",
+      question: "신고 채널은?",
+      type: "single",
+      options: [
+        { key: "anon", label: "윤리경영 홈페이지 익명 신고 + 제보자 보호" },
+        { key: "external", label: "외부 감사법인 신고센터 운영" },
+        { key: "both", label: "익명 내부 채널 + 외부 신고센터 이중 운영" },
+        { key: "basic", label: "일반 고충처리 채널" },
+      ]
+    },
+  ],
+  assemble: (ans) => {
+    const c = {
+      code: "임직원 행동강령을 제정·공표하여",
+      policy: "윤리경영 방침을 수립하여",
+      both: "임직원 행동강령 및 윤리경영 방침을 통합 운영하여",
+      basic: "내부 규정에 따라"
+    }[ans.code] || "";
+    const p = {
+      annual: "연 1회 준법 서약서를 징구합니다",
+      semi: "반기별 준법 서약서를 징구합니다",
+      hire: "입사 시 준법 서약을 수행합니다",
+      none: "윤리 기준을 내재화하고 있습니다"
+    }[ans.pledge] || "";
+    const ch = {
+      anon: "윤리경영 홈페이지를 통해 익명 신고가 가능하며, 제보자 보호 규정을 운영합니다.",
+      external: "외부 감사법인이 운영하는 신고센터를 통해 독립성을 확보합니다.",
+      both: "내부 익명 신고 채널과 외부 감사법인 신고센터를 이중 운영하여 독립성과 접근성을 모두 확보합니다.",
+      basic: "일반 고충처리 채널을 통해 신고가 가능합니다."
+    }[ans.channel] || "";
+    return `당사는 뇌물·리베이트 수수를 엄격히 금지하며, ${c} 반부패 원칙을 명시하고 있습니다. ${p}. ${ch}`;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
 // 🎯 단계별 작성 컴포넌트 — 한 번에 항목 1개, 진행바, 뒤로/앞으로
 // ═══════════════════════════════════════════════════════════════════════
 function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
@@ -3693,15 +4043,17 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
   if (mode === "manual") {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.g600 }}>✏️ 내용 수정</span>
-          <button onClick={() => setMode(savedText ? "saved" : "quiz")}
-            style={{ marginLeft: "auto", fontSize: 11, color: T.g500, background: "none", border: `1px solid ${T.g300}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer" }}>
-            ← 취소
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 12px", background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.blue }}>✏️ 직접 서술 모드</span>
+          <span style={{ fontSize: 11, color: T.g500 }}>· 퀴즈가 안 맞을 때 자유롭게 작성</span>
+          <button onClick={() => { setMode("quiz"); setStepIdx(0); }}
+            style={{ marginLeft: "auto", fontSize: 11, color: T.emerald, background: T.white, border: `1px solid ${T.emerald}`, padding: "3px 8px", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>
+            ← 퀴즈로 돌아가기
           </button>
         </div>
         <textarea value={manualText} onChange={e => setManualText(e.target.value)}
           disabled={disabled} rows={8}
+          placeholder="이 항목에 대한 내용을 자유롭게 작성하세요."
           style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1px solid ${T.g200}`, fontSize: 13, lineHeight: 1.7, fontFamily: "inherit", resize: "vertical" }}/>
         <button onClick={() => { onSave({ answers, text: manualText }); setMode("saved"); }}
           disabled={!manualText.trim()}
@@ -3810,6 +4162,14 @@ function QuizLayered({ quiz, savedAnswers, savedText, onSave, disabled }) {
           <div style={{ flex: 1, height: 6, background: T.g100, borderRadius: 999, overflow: "hidden" }}>
             <div style={{ width: `${progress}%`, height: "100%", background: T.emerald, transition: "width 0.3s" }}/>
           </div>
+          {!disabled && (
+            <button onClick={() => { setManualText(savedText || ""); setMode("manual"); }}
+              style={{ fontSize: 10, color: T.g500, background: T.white, border: `1px solid ${T.g300}`,
+                padding: "3px 8px", borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap" }}
+              title="퀴즈 대신 자유롭게 서술하고 싶을 때">
+              ✏️ 직접 서술
+            </button>
+          )}
         </div>
       )}
       
@@ -3926,9 +4286,14 @@ const GRI102_FIELDS = {
         hint: "3개 항목을 선택하시면 거버넌스 문안이 완성됩니다." },
       { id: "1e_integration", gri: "102-1-e", label: "사업 전략 통합", type: "quiz", quiz: "102-1e",
         hint: "2개 항목을 선택하시면 문안이 완성됩니다." },
-      { id: "1f_phaseout", gri: "102-1-f-ii", label: "화석연료 단계 폐지 목표", type: "textarea", rows: 2,
-        hint: "해당 없으면 '당사는 석탄·중유 등 폐지 대상 화석연료를 직접 사용하지 않음' 기재.",
-        placeholder: "해당 없음 또는: 2030년까지 보일러 LNG 의존도 -30%" },
+      { id: "1f_phaseout", gri: "102-1-f-ii", label: "화석연료 단계 폐지 목표", type: "radio",
+        hint: "가장 가까운 하나 선택.",
+        options: [
+          "해당 없음 (당사는 석탄·중유 등 폐지 대상 화석연료를 직접 사용하지 않음)",
+          "2030년까지 LNG 의존도 30% 감축 계획 수립",
+          "2040년까지 화석연료 단계적 폐지 계획 수립",
+          "2050년 탄소중립 로드맵 내 반영"
+        ] },
       { id: "1g_just_transition", gri: "102-1-g", label: "공정 전환 원칙", type: "quiz", quiz: "102-1g",
         glossary: "JUST_TRANSITION",
         hint: "2개 항목을 선택하시면 공정 전환 문안이 완성됩니다." },
@@ -4014,10 +4379,22 @@ const GRI102_FIELDS = {
         hint: "2개 항목을 선택하시면 적응 조치 문안이 완성됩니다." },
       { id: "2c_capex", gri: "102-2-b-iii", label: "적응 관련 지출 (CapEx)", type: "number", unit: "백만원" },
       { id: "2c_opex", gri: "102-2-b-iii", label: "적응 관련 지출 (OpEx)", type: "number", unit: "백만원" },
-      { id: "2d_gov", gri: "102-2-b-iv", label: "감독 거버넌스", type: "textarea", rows: 2,
-        template: "이사회가 적응 계획 관련 중요 사안을 직접 심의하며, 환경안전부가 실무 모니터링을 수행합니다." },
-      { id: "2e_targets", gri: "102-2-b-v", label: "적응 목표", type: "textarea", rows: 2,
-        placeholder: "예: 연 1회 전 시설 점검, 비상 대응 교육 100% 이수" },
+      { id: "2d_gov", gri: "102-2-b-iv", label: "감독 거버넌스", type: "radio",
+        hint: "가장 가까운 하나 선택.",
+        options: [
+          "이사회 산하 ESG위원회가 직접 감독 · 환경안전부 실무 모니터링",
+          "이사회가 적응 계획 관련 중요 사안을 직접 심의 · 환경안전부 실무 모니터링",
+          "경영진 협의체가 심의 · 환경안전부 실무 모니터링",
+          "환경안전부 자체 관리 (경영진 보고)"
+        ] },
+      { id: "2e_targets", gri: "102-2-b-v", label: "적응 목표", type: "radio",
+        hint: "가장 가까운 하나 선택.",
+        options: [
+          "연 1회 전 시설 점검 · 비상 대응 교육 100% 이수",
+          "분기별 시설 점검 · 비상 대응 훈련 연 2회",
+          "반기별 시설 점검 · 비상 대응 교육 연 1회",
+          "법정 주기 점검만 수행"
+        ] },
     ]
   },
   "102-9": {
@@ -4074,6 +4451,12 @@ function SubField({ field, value, onChange, disabled }) {
         "303-policy": QUIZ_303_POLICY,
         "403-policy": QUIZ_403_POLICY,
         "2-governance": QUIZ_2_GOVERNANCE,
+        "103-base-reason": QUIZ_103_BASE_REASON,
+        "103-target": QUIZ_103_TARGET,
+        "306-activities": QUIZ_306_ACTIVITIES,
+        "303-reduction": QUIZ_303_REDUCTION,
+        "403-health-edu": QUIZ_403_HEALTH_EDU,
+        "2-anticorruption": QUIZ_2_ANTICORRUPTION,
       };
       const quiz = quizMap[field.quiz];
       if (!quiz) return <div style={{ color: T.rose }}>작성 트리 '{field.quiz}' 미정의</div>;
@@ -5006,13 +5389,15 @@ function GRI103Panel({ subPage, scopeData, blockData, setBlockData, ud, isAdmin 
               {REPORT_YEARS.map(y => <option key={y} value={y}>{y}년</option>)}
             </select>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <span style={{ fontSize: 12, color: T.g500, width: 80, paddingTop: 6 }}>선택 근거:</span>
-            <textarea value={energyMeta["base_reason"] || ""}
+          <div style={{ marginTop: 14 }}>
+            <span style={{ fontSize: 12, color: T.g500, display: "block", marginBottom: 8 }}>선택 근거 (2개 질문):</span>
+            <QuizLayered 
+              quiz={QUIZ_103_BASE_REASON}
+              savedAnswers={(energyMeta["base_reason_data"] && energyMeta["base_reason_data"].answers) || null}
+              savedText={(energyMeta["base_reason_data"] && energyMeta["base_reason_data"].v) || null}
+              onSave={(result) => setEnergyMeta("base_reason_data", { answers: result.answers, v: result.text })}
               disabled={!isUserEnv}
-              onChange={e => setEnergyMeta("base_reason", e.target.value)}
-              placeholder="예: 당사 ESG 경영 선언 연도 / 생산 규모 안정화 첫 해"
-              style={{ flex: 1, padding: "8px 12px", borderRadius: 5, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 60, resize: "vertical" }} />
+            />
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
@@ -5087,20 +5472,18 @@ function GRI103Panel({ subPage, scopeData, blockData, setBlockData, ud, isAdmin 
             />
           </div>
 
-          {/* 목표 수치 - 간단 textarea 유지 */}
-          {[
-            { key: "policy_target", label: "에너지 관리 목표 (세부 수치)", placeholder: "예: 단기(~2026년) 연 1.5% 감축 / 중기(~2030년) 누적 10% 감축 / 장기 재생에너지 비중 30%" },
-            { key: "policy_iso", label: "적용 표준 및 인증 (세부)", placeholder: "예: ISO 50001 에너지경영 / ISO 14001 환경경영 / IPCC 2006 / GHG Protocol Scope 2 Guidance" },
-          ].map(f => (
-            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
-              <textarea value={energyMeta[f.key] || ""}
-                disabled={!isUserEnv}
-                onChange={e => setEnergyMeta(f.key, e.target.value)}
-                placeholder={f.placeholder}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
-            </div>
-          ))}
+          {/* 목표 수치 - 퀴즈 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 6 }}>에너지 관리 목표 (수치)</p>
+            <p style={{ fontSize: 11, color: T.g500, marginBottom: 14 }}>3개 질문에 답하시면 단기·중기·장기 목표가 자동 설정됩니다.</p>
+            <QuizLayered 
+              quiz={QUIZ_103_TARGET}
+              savedAnswers={(energyMeta["target_data"] && energyMeta["target_data"].answers) || null}
+              savedText={(energyMeta["target_data"] && energyMeta["target_data"].v) || null}
+              onSave={(result) => setEnergyMeta("target_data", { answers: result.answers, v: result.text })}
+              disabled={!isUserEnv}
+            />
+          </div>
         </div>
       </div>
     );
@@ -5248,20 +5631,18 @@ function GRI306Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
             />
           </div>
           
-          {/* 세부 활동 - 간단 textarea 유지 */}
-          {[
-            { key: "recycling_activities", label: "재활용·감량 구체 활동 (세부)", placeholder: "예: 공정 폐용제 재회수 시스템 도입으로 연 15% 감축 · 포장재 간소화" },
-            { key: "compliance", label: "법규 준수 및 인증 (세부)", placeholder: "예: 폐기물관리법 준수 · 올바로시스템 등록 · ISO 14001 환경경영 인증" },
-          ].map(f => (
-            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
-              <textarea value={wasteMeta[f.key] || ""}
-                disabled={!isUserFac}
-                onChange={e => setWasteMeta(f.key, e.target.value)}
-                placeholder={f.placeholder}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
-            </div>
-          ))}
+          {/* 재활용·감량 활동 + 법규 - 퀴즈 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 6 }}>재활용·감량 활동 및 법규</p>
+            <p style={{ fontSize: 11, color: T.g500, marginBottom: 14 }}>3개 질문에 답하시면 활동 문안이 자동 완성됩니다.</p>
+            <QuizLayered 
+              quiz={QUIZ_306_ACTIVITIES}
+              savedAnswers={(wasteMeta["activities_data"] && wasteMeta["activities_data"].answers) || null}
+              savedText={(wasteMeta["activities_data"] && wasteMeta["activities_data"].v) || null}
+              onSave={(result) => setWasteMeta("activities_data", { answers: result.answers, v: result.text })}
+              disabled={!isUserFac}
+            />
+          </div>
         </div>
       </div>
     );
@@ -5399,20 +5780,18 @@ function GRI303Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
             />
           </div>
           
-          {/* 세부 활동 - textarea 유지 */}
-          {[
-            { key: "reduction", label: "취수량 감축 활동 (세부)", placeholder: "예: 냉각수 재순환 시스템 도입 (2023) · 고효율 RO막 교체 회수율 30% 개선" },
-            { key: "discharge_quality", label: "방류수 관리 (세부 설비)", placeholder: "예: 자체 폐수처리장(200㎥/일) · 수질 TMS · 분기별 수질검사" },
-          ].map(f => (
-            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
-              <textarea value={waterMeta[f.key] || ""}
-                disabled={!isUserFac}
-                onChange={e => setWaterMeta(f.key, e.target.value)}
-                placeholder={f.placeholder}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
-            </div>
-          ))}
+          {/* 취수 감축 활동 - 퀴즈 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 6 }}>취수량 감축 활동</p>
+            <p style={{ fontSize: 11, color: T.g500, marginBottom: 14 }}>3개 질문에 답하시면 감축 활동 문안이 자동 완성됩니다.</p>
+            <QuizLayered 
+              quiz={QUIZ_303_REDUCTION}
+              savedAnswers={(waterMeta["reduction_data"] && waterMeta["reduction_data"].answers) || null}
+              savedText={(waterMeta["reduction_data"] && waterMeta["reduction_data"].v) || null}
+              onSave={(result) => setWaterMeta("reduction_data", { answers: result.answers, v: result.text })}
+              disabled={!isUserFac}
+            />
+          </div>
         </div>
       </div>
     );
@@ -5796,20 +6175,18 @@ function GRI403Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
             />
           </div>
           
-          {/* 세부 서술 - textarea 유지 */}
-          {[
-            { key: "health_services", label: "보건 서비스 (세부)", placeholder: "예: 협력 보건관리대행기관 월 1회 상주 · 정기 건강검진 100% · 특수검진 반기별" },
-            { key: "training_program", label: "교육훈련 프로그램 (세부)", placeholder: "예: 신입 안전교육 24시간 · 분기 정기교육 12시간 · 관리감독자 16시간 · 외국인 모국어 교육" },
-          ].map(f => (
-            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
-              <textarea value={safetyMeta[f.key] || ""}
-                disabled={!isUserAdmin}
-                onChange={e => setSafetyMeta(f.key, e.target.value)}
-                placeholder={f.placeholder}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
-            </div>
-          ))}
+          {/* 보건·교육 - 퀴즈 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 6 }}>보건 서비스 및 안전교육</p>
+            <p style={{ fontSize: 11, color: T.g500, marginBottom: 14 }}>3개 질문에 답하시면 보건·교육 문안이 자동 완성됩니다.</p>
+            <QuizLayered 
+              quiz={QUIZ_403_HEALTH_EDU}
+              savedAnswers={(safetyMeta["health_edu_data"] && safetyMeta["health_edu_data"].answers) || null}
+              savedText={(safetyMeta["health_edu_data"] && safetyMeta["health_edu_data"].v) || null}
+              onSave={(result) => setSafetyMeta("health_edu_data", { answers: result.answers, v: result.text })}
+              disabled={!isUserAdmin}
+            />
+          </div>
         </div>
       </div>
     );
@@ -6104,19 +6481,18 @@ function GRIGovernancePanel({ subPage, blockData, setBlockData, ud, isAdmin }) {
           </table>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[
-            { key: "policy", label: "반부패 정책", placeholder: "예: 임직원 행동강령 제정 · 뇌물·리베이트 수수 엄격 금지 · 연 1회 서약서 징구" },
-            { key: "reporting_channel", label: "신고 채널", placeholder: "예: 윤리경영 홈페이지 익명 신고 · 외부 감사법인 신고센터 · 제보자 보호 규정" },
-          ].map(f => (
-            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
-              <textarea value={govMeta[f.key] || ""}
-                disabled={!isUserAdmin}
-                onChange={e => setMeta(f.key, e.target.value)}
-                placeholder={f.placeholder}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 80, resize: "vertical", lineHeight: 1.6 }} />
-            </div>
-          ))}
+          {/* 반부패 정책 + 신고 채널 - 퀴즈 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 6 }}>반부패 정책 및 신고 채널</p>
+            <p style={{ fontSize: 11, color: T.g500, marginBottom: 14 }}>3개 질문에 답하시면 반부패 정책·신고 채널 문안이 자동 완성됩니다.</p>
+            <QuizLayered 
+              quiz={QUIZ_2_ANTICORRUPTION}
+              savedAnswers={(govMeta["anticorruption_data"] && govMeta["anticorruption_data"].answers) || null}
+              savedText={(govMeta["anticorruption_data"] && govMeta["anticorruption_data"].v) || null}
+              onSave={(result) => setMeta("anticorruption_data", { answers: result.answers, v: result.text })}
+              disabled={!isUserAdmin}
+            />
+          </div>
         </div>
       </div>
     );
@@ -6140,7 +6516,7 @@ function GRIGovernancePanel({ subPage, blockData, setBlockData, ud, isAdmin }) {
           />
         </div>
         
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {[
             { key: "company_name", label: "2-1 조직 법적 명칭", placeholder: "예: 와이씨켐 주식회사 (YCChem Co., Ltd.)" },
             { key: "ownership", label: "2-1 소유·법적 형태", placeholder: "예: 비상장 주식회사 · 주주 구성" },
@@ -6153,13 +6529,13 @@ function GRIGovernancePanel({ subPage, blockData, setBlockData, ud, isAdmin }) {
             { key: "governance_body", label: "2-9 최고 거버넌스 기관 (세부)", placeholder: "예: 이사회 5명 (사내 3, 사외 2) · 분기 정기 회의" },
             { key: "audit_external", label: "2-5 외부 검증", placeholder: "예: GRI 콘텐츠 참조보고 · BSI 제3자 검증 예정" },
           ].map(f => (
-            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
-              <textarea value={govMeta[f.key] || ""}
+            <div key={f.key} style={{ background: T.white, borderRadius: 8, border: `1px solid ${T.g200}`, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: T.g700, margin: 0, width: 180, flexShrink: 0 }}>{f.label}</p>
+              <input type="text" value={govMeta[f.key] || ""}
                 disabled={!isUserAdmin}
                 onChange={e => setMeta(f.key, e.target.value)}
                 placeholder={f.placeholder}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 60, resize: "vertical", lineHeight: 1.6 }} />
+                style={{ flex: 1, padding: "6px 10px", borderRadius: 5, border: `1px solid ${T.g200}`, fontSize: 12, background: isUserAdmin ? T.white : T.g50 }} />
             </div>
           ))}
         </div>
