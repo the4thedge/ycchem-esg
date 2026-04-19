@@ -282,15 +282,17 @@ function InputTabs({ mode, onChange }) {
 // ═══════════════════════════════════════════
 // 공통 컴포넌트: 엑셀 업로드
 // ═══════════════════════════════════════════
-function ExcelUpload({ templateName, expectedFormat, onParse, hint }) {
+function ExcelUpload({ templateName, expectedFormat, onParse, hint, onApplied }) {
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(null);
+  const [applied, setApplied] = useState(false);
 
   const handleFile = async (file) => {
     if (!file) return;
     setFileName(file.name);
     setError("");
+    setApplied(false);
     try {
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data, { type: "array" });
@@ -303,6 +305,17 @@ function ExcelUpload({ templateName, expectedFormat, onParse, hint }) {
       }
     } catch (e) {
       setError("파일 읽기 실패: " + e.message);
+    }
+  };
+  
+  const handleApply = () => {
+    if (!preview || !preview.apply) return;
+    try {
+      preview.apply();
+      setApplied(true);
+      if (onApplied) onApplied();
+    } catch (e) {
+      setError("적용 중 오류: " + e.message);
     }
   };
 
@@ -352,18 +365,38 @@ function ExcelUpload({ templateName, expectedFormat, onParse, hint }) {
         </div>
       )}
 
-      {preview && preview.preview && (
+      {preview && preview.preview && !applied && (
         <div style={{ marginTop: 12, padding: 16, background: T.emeraldBg, borderRadius: 10, border: `1px solid ${T.emerald}33` }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: T.g800, marginBottom: 8 }}>
             ✅ {preview.message}
           </p>
-          <pre style={{ fontSize: 12, color: T.g600, background: T.white, padding: 10, borderRadius: 6, overflow: "auto", maxHeight: 200 }}>
+          <pre style={{ fontSize: 12, color: T.g600, background: T.white, padding: 10, borderRadius: 6, overflow: "auto", maxHeight: 200, whiteSpace: "pre-wrap" }}>
             {preview.preview}
           </pre>
-          <button onClick={() => preview.apply()}
-            style={{ marginTop: 10, padding: "8px 18px", borderRadius: 6, border: "none",
-              background: T.emerald, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            적용하기
+          <button onClick={handleApply}
+            style={{ marginTop: 10, padding: "10px 22px", borderRadius: 6, border: "none",
+              background: T.emerald, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            📥 데이터 반영하기
+          </button>
+          <p style={{ fontSize: 11, color: T.g500, marginTop: 8 }}>
+            💡 반영 후 자동으로 "연간 총량" 탭으로 이동하여 입력된 값을 확인하실 수 있습니다.
+          </p>
+        </div>
+      )}
+      
+      {applied && (
+        <div style={{ marginTop: 12, padding: 20, background: T.emeraldBg, borderRadius: 10, border: `2px solid ${T.emerald}`, textAlign: "center" }}>
+          <div style={{ fontSize: 42, marginBottom: 8 }}>🎉</div>
+          <p style={{ fontSize: 16, fontWeight: 700, color: T.emerald, marginBottom: 6 }}>
+            데이터 반영 완료!
+          </p>
+          <p style={{ fontSize: 13, color: T.g600, marginBottom: 12 }}>
+            "연간 총량" 탭 또는 "월별 입력" 탭에서 입력된 값을 확인하세요.
+          </p>
+          <button onClick={() => { setApplied(false); setPreview(null); setFileName(""); }}
+            style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${T.emerald}`,
+              background: T.white, color: T.emerald, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            🔄 새 파일 올리기
           </button>
         </div>
       )}
@@ -462,7 +495,7 @@ function FuelRowYearly({ fuel, value, unitKey, onChange, onUnitChange, disabled,
 // ═══════════════════════════════════════════
 // Scope 1 · 고정연소 + 이동연소
 // ═══════════════════════════════════════════
-function Scope1P({ data, set, ud }) {
+function Scope1P({ data, set, setS2Direct, ud }) {
   const [mode, setMode] = useState("yearly");
   const [units, setUnits] = useState({});
   const [monthlyYear, setMonthlyYear] = useState(YEAR_LATEST); // 월별 입력 대상 연도
@@ -671,9 +704,13 @@ function Scope1P({ data, set, ud }) {
         return (fuel.units || []).find(opt => u.includes(opt.key) || opt.key.includes(u)) || fuel.units?.[0];
       };
 
-      // parsed: [{ fuelId, fuelName, unit, byYear: { 2023: x, 2024: y } }]
+      // parsed: Scope 1 연료 데이터 [{ fuelId, fuelName, unit, byYear, byYearMonthly }]
       const parsed = [];
       let formatDetected = "unknown";
+      
+      // Scope 2 자동 전달용 (Scope 1 파서가 같은 엑셀에서 전력도 함께 추출)
+      const electricByYear = {};       // { 2023: kWh, 2024: kWh }
+      const electricMonthlyByYear = {}; // { 2023: [12개월], 2024: [12개월] }
       
       const mergeFuel = (fuelId, fuelName, year, val, unit) => {
         let entry = parsed.find(p => p.fuelId === fuelId);
@@ -743,8 +780,26 @@ function Scope1P({ data, set, ud }) {
               
               if (Object.keys(byYear).length === 0) continue;
               
-              // 전력·스팀은 Scope 2 담당 → Scope 1 파서에서 스킵
-              if (String(fuelName).includes("전력") || String(fuelName).includes("스팀")) continue;
+              // 전력은 Scope 2 담당 → electricByYear에 수집 (나중에 Scope 2로 전달)
+              if (String(fuelName).includes("전력")) {
+                // 단위를 kWh로 환산
+                const unitStr = String(unit || "");
+                const kwhFactor = unitStr.includes("MWh") ? 1000 : 1;
+                for (const [yr, v] of Object.entries(byYear)) {
+                  electricByYear[yr] = (electricByYear[yr] || 0) + v * kwhFactor;
+                }
+                // 월별도 수집
+                for (const [yr, arr] of Object.entries(byYearMonthly)) {
+                  if (!electricMonthlyByYear[yr]) electricMonthlyByYear[yr] = new Array(12).fill(0);
+                  for (let m = 0; m < 12; m++) {
+                    electricMonthlyByYear[yr][m] += (arr[m] || 0) * kwhFactor;
+                  }
+                }
+                continue;
+              }
+              
+              // 스팀은 현재 미처리 (향후)
+              if (String(fuelName).includes("스팀")) continue;
               
               const fuel = matchFuel(fuelName);
               if (!fuel) continue;
@@ -766,8 +821,8 @@ function Scope1P({ data, set, ud }) {
               }
             }
             
-            if (parsed.length > 0) {
-              formatDetected = "정부 인벤토리 툴 포맷 (3년치 + 월별 자동 추출)";
+            if (parsed.length > 0 || Object.keys(electricByYear).length > 0) {
+              formatDetected = "정부 인벤토리 툴 포맷 (Scope 1 + Scope 2 동시 추출)";
             }
           }
         }
@@ -896,14 +951,14 @@ function Scope1P({ data, set, ud }) {
         }
       }
       
-      if (parsed.length === 0) {
+      if (parsed.length === 0 && Object.keys(electricByYear).length === 0) {
         return { 
-          error: "인식 가능한 연료 데이터가 없습니다.\n\n지원 포맷:\n① 정부 인벤토리 툴 포맷 ('1 활동도 입력' 시트, 연도별 합계 행 자동 추출)\n② 공급망 가치사슬 관리 툴 포맷\n③ 범용 포맷 ([연료] [2023] [2024] [단위] 등)\n\n💡 엑셀 구조가 많이 다르면 수동 매핑 UI로 해결 예정 (v12)" 
+          error: "인식 가능한 연료 데이터가 없습니다.\n\n지원 포맷:\n① 정부 인벤토리 툴 포맷 ('1 활동도 입력' 시트, 연도별 합계 행 자동 추출)\n② 공급망 가치사슬 관리 툴 포맷\n③ 범용 포맷 ([연료] [2023] [2024] [단위] 등)\n\n💡 엑셀 구조가 많이 다르면 수동 매핑 UI로 해결 예정" 
         };
       }
       
-      // 미리보기 문자열 생성
-      const previewLines = parsed.map(p => {
+      // 미리보기: Scope 1 연료 + Scope 2 전력
+      const s1Lines = parsed.map(p => {
         const yearStr = REPORT_YEARS.map(y => {
           const v = p.byYear[y];
           return v ? `${y}: ${v.toLocaleString(undefined,{maximumFractionDigits:2})}` : `${y}: -`;
@@ -911,45 +966,54 @@ function Scope1P({ data, set, ud }) {
         return `• ${p.fuelName} (${p.unit}) — ${yearStr}`;
       }).join("\n");
       
+      const electricLines = Object.keys(electricByYear).length > 0
+        ? "\n\n━━━ 🔌 Scope 2 (전력) 자동 추출 ━━━\n" + REPORT_YEARS.map(y => {
+            const v = electricByYear[y];
+            return v ? `• ${y}년: ${v.toLocaleString(undefined,{maximumFractionDigits:0})} kWh` : `• ${y}년: 데이터 없음`;
+          }).join("\n")
+        : "";
+      
+      const previewLines = (s1Lines ? "━━━ 🔥 Scope 1 (직접배출) ━━━\n" + s1Lines : "") + electricLines;
+      
       const yearSet = new Set();
       parsed.forEach(p => Object.keys(p.byYear).forEach(y => yearSet.add(y)));
+      Object.keys(electricByYear).forEach(y => yearSet.add(y));
       const extractedYears = [...yearSet].sort();
       
+      const hasElectric = Object.keys(electricByYear).length > 0;
+      const msgParts = [];
+      if (parsed.length > 0) msgParts.push(`Scope 1 연료 ${parsed.length}개`);
+      if (hasElectric) msgParts.push(`Scope 2 전력 ${Object.keys(electricByYear).length}개 연도`);
+      
       return {
-        message: `✅ ${formatDetected}\n연료 ${parsed.length}개 · 연도 ${extractedYears.length}개 (${extractedYears.join(", ")})`,
+        message: `✅ ${formatDetected}\n${msgParts.join(" + ")} · 보고 연도 ${extractedYears.join(", ")}`,
         preview: previewLines,
         apply: () => {
+          // Scope 1 저장
           parsed.forEach(p => {
-            // 단위 저장
             set(p.fuelId + "_unit", p.unit);
-            // 연도별 값 저장 (기존 값 병합)
-            const current = data[p.fuelId];
-            let yearObj = (typeof current === "object" && current !== null) ? { ...current } : {};
-            for (const [yr, v] of Object.entries(p.byYear)) {
-              yearObj[yr] = v;
-            }
-            // 단일 숫자로 저장된 기존 값 보존 (최신 연도로)
-            if (typeof current === "number" && !yearObj[YEAR_LATEST]) {
-              yearObj[YEAR_LATEST] = current;
-            }
-            set(p.fuelId, yearObj);
-            
-            // 월별 데이터 저장 (연도별 객체 구조)
+            set(p.fuelId, { ...p.byYear });
             if (p.byYearMonthly && Object.keys(p.byYearMonthly).length > 0) {
-              const monthlyKey = "_monthly_" + p.fuelId;
-              const currentMonthly = data[monthlyKey];
-              let monthlyObj = {};
-              if (Array.isArray(currentMonthly)) {
-                monthlyObj[YEAR_LATEST] = currentMonthly; // 기존 배열은 최신 연도로
-              } else if (typeof currentMonthly === "object" && currentMonthly !== null) {
-                monthlyObj = { ...currentMonthly };
-              }
-              for (const [yr, arr] of Object.entries(p.byYearMonthly)) {
-                monthlyObj[yr] = arr;
-              }
-              set(monthlyKey, monthlyObj);
+              set("_monthly_" + p.fuelId, { ...p.byYearMonthly });
             }
           });
+          
+          // Scope 2 전력 자동 저장 (setS2Direct prop 사용)
+          if (hasElectric && setS2Direct) {
+            for (const [yr, kwh] of Object.entries(electricByYear)) {
+              setS2Direct("yearly_val_" + yr, kwh);
+            }
+            // 최신 연도는 yearly_val에도 (호환)
+            if (electricByYear[YEAR_LATEST]) {
+              setS2Direct("yearly_val", electricByYear[YEAR_LATEST]);
+            }
+            setS2Direct("input_type", "kWh");
+            
+            // Scope 2 월별도 저장
+            for (const [yr, arr] of Object.entries(electricMonthlyByYear)) {
+              setS2Direct("_monthly_" + yr, arr);
+            }
+          }
         }
       };
     } catch (e) {
@@ -977,9 +1041,10 @@ function Scope1P({ data, set, ud }) {
       
       {mode === "excel" && (
         <ExcelUpload
-          hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
-          expectedFormat={"✅ 지원 포맷:\n① 월별 시계열 인벤토리 포맷 — '활동도 입력' 시트에서 연도별 합계 자동 추출\n② 공급망 가치사슬 관리 툴 포맷 — 사업장·시설별 연료 사용량 표\n③ 범용 포맷 — 첫 행에 [연료] [사용량] [단위] 헤더가 있는 엑셀\n\n💡 연료명은 'LNG', 'LPG', '경유', '휘발유', '등유', 'B-C유' 자동 인식"}
+          hint="업체 엑셀 그대로 올리세요. Scope 1 + Scope 2(전력)까지 한 번에 자동 추출됩니다."
+          expectedFormat={"✅ 지원 포맷:\n① 정부 인벤토리 툴 포맷 — '1 활동도 입력' 시트에서 연료별 + 전력 3년치 자동 추출\n② 공급망 가치사슬 관리 툴 포맷\n③ 범용 포맷 — [연료] [2023] [2024] [단위] 헤더\n\n💡 연료명 자동 인식: LNG·LPG·경유·휘발유·등유·B-C유·전력\n💡 Scope 2(전력) 데이터는 자동으로 Scope 2 블록에도 반영됩니다"}
           onParse={parseExcel}
+          onApplied={() => setTimeout(() => setMode("yearly"), 1500)}
         />
       )}
     </div>
@@ -1398,6 +1463,7 @@ function Scope2P({ data, set, ud }) {
           hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
           expectedFormat={"✅ 지원 포맷:\n① 월별 시계열 인벤토리 포맷 — '활동도 입력' 시트에서 전력 사용량 자동 추출\n② 공급망 가치사슬 관리 툴 포맷 — 사업장별 전력 사용 데이터\n③ 한전 사이버지점/한전ON 다운로드 — 청구년월 + 사용량(kWh) 표\n④ 범용 — [월 | 사용량(kWh)] 형식 엑셀"}
           onParse={parseExcel}
+          onApplied={() => setTimeout(() => setMode("yearly"), 1500)}
         />
       )}
     </div>
@@ -1708,6 +1774,7 @@ function Scope3P({ data, set, ud }) {
           hint="고객사 요청 템플릿이나 회계 자료 그대로 올리세요"
           expectedFormat={"✅ 지원 포맷:\n① 카테고리별 시트 분리 포맷 — 'Category 1' ~ 'Category 15' 시트가 각각 있는 엑셀, 각 시트의 비용 기반 산정 섹션 자동 추출\n② 공급망 Scope3 통합 시트 포맷 — 'Scope3' 시트에 카테고리 1~15가 세로로 나열된 표\n③ 매입처 집계 — 키워드로 자동 분류 (원재료→Cat.1, 설비→Cat.2, 운송→Cat.4, 폐기→Cat.5, 출장→Cat.6)"}
           onParse={parseExcel}
+          onApplied={() => setTimeout(() => setMode("yearly"), 1500)}
         />
       )}
     </div>
@@ -3497,7 +3564,7 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
       let child;
       let scopeNeedInput = false;
       if (block.input_type === 'scope1_table') {
-        child = <Scope1P data={scopeData.s1} set={setS1} ud={ud}/>;
+        child = <Scope1P data={scopeData.s1} set={setS1} setS2Direct={setS2} ud={ud}/>;
         const myFuels = [...SF, ...MF].filter(f => ud === 'all' || f.dept === ud);
         scopeNeedInput = myFuels.length > 0 && myFuels.every(f => !scopeData.s1[f.id]);
       } else if (block.input_type === 'scope2_table') {
