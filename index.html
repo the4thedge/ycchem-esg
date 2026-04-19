@@ -4496,6 +4496,215 @@ function GRI303Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// 🏭 GRI 305: 배출 2016 (대기오염물질·유해물질 · E5 연계)
+// ═══════════════════════════════════════════════════════════════════════
+function GRI305Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserEnv = ce("env") || ce("fac") || isAdmin;
+  const airMeta = blockData["_305_meta"] || {};
+  const setAirMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_305_meta": { ...(d["_305_meta"] || {}), [key]: val } }));
+  };
+
+  // 대기오염물질 종류 (대기환경보전법 기준)
+  const AIR_POLLUTANTS = [
+    { id: "nox", name: "질소산화물 (NOx)", unit: "kg", desc: "연소 공정·보일러에서 주로 발생" },
+    { id: "sox", name: "황산화물 (SOx)", unit: "kg", desc: "황 함유 연료 연소 시 발생" },
+    { id: "dust", name: "먼지 (PM)", unit: "kg", desc: "분진·미세먼지 포함" },
+    { id: "voc", name: "휘발성유기화합물 (VOC)", unit: "kg", desc: "유기용제·신나·세척액 등" },
+    { id: "hap", name: "유해대기오염물질 (HAP)", unit: "kg", desc: "벤젠·톨루엔·자일렌 등 특정 물질" },
+  ];
+
+  // 유해화학물질 (화학물질관리법 기준)
+  const CHEM_CATEGORIES = [
+    { id: "toxic", name: "유독물질", unit: "ton", desc: "화학물질관리법 제20조" },
+    { id: "permit", name: "허가물질", unit: "ton", desc: "화학물질관리법 제25조" },
+    { id: "restrict", name: "제한물질", unit: "ton", desc: "화학물질관리법 제27조" },
+    { id: "prohibit", name: "금지물질", unit: "ton", desc: "화학물질관리법 제28조 (사용 금지)" },
+    { id: "accident", name: "사고대비물질", unit: "ton", desc: "화학물질관리법 제39조" },
+  ];
+
+  const getVal = (cat, id, year) => parseFloat(airMeta[cat + "_" + id + "_" + year]) || 0;
+
+  const Header = ({ icon, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>환경</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} GRI 305: 배출 2016</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+
+  if (subPage === "air" || !subPage) {
+    const latest = YEAR_LATEST;
+    const totals = AIR_POLLUTANTS.reduce((acc, p) => ({ ...acc, [p.id]: getVal("air", p.id, latest) }), {});
+    const latestTotal = Object.values(totals).reduce((s, v) => s + v, 0);
+
+    return (
+      <div>
+        <Header icon="💨" sub="대기오염물질 배출량 (GRI 305-7) — NOx·SOx·먼지·VOC·HAP" />
+
+        <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 12, color: "#92400e" }}>
+          💡 <strong>연계 정보</strong> · 이 항목은 이중중대성평가 E5 「대기오염·유해물질」의 공시 데이터입니다. 환경부 굴뚝 자동측정기기(TMS) 또는 자가측정 결과를 입력하세요.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 20 }}>
+          {AIR_POLLUTANTS.map(p => (
+            <div key={p.id} style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 14 }}>
+              <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.04em", marginBottom: 4 }}>{p.name.split(" (")[0]}</p>
+              <p style={{ fontSize: 18, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{totals[p.id].toLocaleString()}</p>
+              <p style={{ fontSize: 10, color: T.g600, marginTop: 2 }}>{p.unit}</p>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", marginBottom: 20 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 대기오염물질 3년치 배출량 (kg)</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600, width: "45%" }}>물질</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {AIR_POLLUTANTS.map(p => (
+                <tr key={p.id} style={{ borderBottom: `1px solid ${T.g100}` }}>
+                  <td style={{ padding: "10px 14px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.g800 }}>{p.name}</div>
+                    <div style={{ fontSize: 10, color: T.g500, marginTop: 2 }}>{p.desc}</div>
+                  </td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "8px" }}>
+                      <input type="number" value={airMeta["air_" + p.id + "_" + y] || ""}
+                        onChange={e => setAirMeta("air_" + p.id + "_" + y, e.target.value)}
+                        disabled={!isUserEnv}
+                        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: `1px solid ${T.g200}`, borderRadius: 4, textAlign: "right", background: isUserEnv ? T.white : T.g50 }}
+                        placeholder="0" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 방지시설 정보 */}
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 12 }}>🔧 대기 방지시설 운영 현황</p>
+          <p style={{ fontSize: 11, color: T.g500, marginBottom: 10 }}>주요 방지시설(스크러버·RTO·흡착탑 등) 종류와 운영률을 서술하세요.</p>
+          <textarea
+            value={airMeta["air_control_desc"] || ""}
+            onChange={e => setAirMeta("air_control_desc", e.target.value)}
+            disabled={!isUserEnv}
+            placeholder="예: 도장 공정 RTO(Regenerative Thermal Oxidizer) 1기 운영, VOC 제거효율 95% 이상 유지. 보일러 SCR 설치로 NOx 90% 저감."
+            style={{ width: "100%", minHeight: 80, padding: 10, fontSize: 12, border: `1px solid ${T.g200}`, borderRadius: 5, resize: "vertical", fontFamily: "inherit", background: isUserEnv ? T.white : T.g50 }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (subPage === "chem") {
+    const latest = YEAR_LATEST;
+    return (
+      <div>
+        <Header icon="⚗️" sub="유해화학물질 관리 (화학물질관리법 기준)" />
+
+        <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 12, color: "#92400e" }}>
+          💡 <strong>연계 정보</strong> · 이중중대성평가 E5 「대기오염·유해물질」과 E4 「폐기물·순환경제」에 공통 반영됩니다. 화학물질 배출·이동량(PRTR) 자료 기반으로 입력하세요.
+        </div>
+
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", marginBottom: 20 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>🧪 유해화학물질 취급량 3년치 (단위: ton)</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600, width: "45%" }}>분류</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {CHEM_CATEGORIES.map(c => (
+                <tr key={c.id} style={{ borderBottom: `1px solid ${T.g100}` }}>
+                  <td style={{ padding: "10px 14px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.g800 }}>{c.name}</div>
+                    <div style={{ fontSize: 10, color: T.g500, marginTop: 2 }}>{c.desc}</div>
+                  </td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "8px" }}>
+                      <input type="number" value={airMeta["chem_" + c.id + "_" + y] || ""}
+                        onChange={e => setAirMeta("chem_" + c.id + "_" + y, e.target.value)}
+                        disabled={!isUserEnv}
+                        style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: `1px solid ${T.g200}`, borderRadius: 4, textAlign: "right", background: isUserEnv ? T.white : T.g50 }}
+                        placeholder="0" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 사고·유출 이력 */}
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20, marginBottom: 16 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 12 }}>🚨 화학물질 사고·유출 이력 (3년)</p>
+          <textarea
+            value={airMeta["chem_incidents"] || ""}
+            onChange={e => setAirMeta("chem_incidents", e.target.value)}
+            disabled={!isUserEnv}
+            placeholder="예: 보고 기간 중 중대 화학사고 0건. 경미 누출 2건 (사내 자체 처리, 환경 영향 없음). 관련 교육 연 2회 실시."
+            style={{ width: "100%", minHeight: 80, padding: 10, fontSize: 12, border: `1px solid ${T.g200}`, borderRadius: 5, resize: "vertical", fontFamily: "inherit", background: isUserEnv ? T.white : T.g50 }}
+          />
+        </div>
+
+        {/* 관리 시스템 */}
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 12 }}>📋 유해화학물질 관리 체계</p>
+          <textarea
+            value={airMeta["chem_mgmt"] || ""}
+            onChange={e => setAirMeta("chem_mgmt", e.target.value)}
+            disabled={!isUserEnv}
+            placeholder="예: 화학물질관리법·산업안전보건법 준수. 전사 MSDS 관리 시스템 운영. 취급 담당자 정기 교육(연 4회) 및 건강검진(연 2회) 실시. CCM(Clean Chemical Management) 체계 수립."
+            style={{ width: "100%", minHeight: 100, padding: 10, fontSize: 12, border: `1px solid ${T.g200}`, borderRadius: 5, resize: "vertical", fontFamily: "inherit", background: isUserEnv ? T.white : T.g50 }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (subPage === "policy") {
+    return (
+      <div>
+        <Header icon="📝" sub="대기·화학물질 관리 정책 (GRI 305-1, 305-2, 305-3 정책 공시)" />
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 12 }}>대기·화학물질 관리 정책 및 목표</p>
+          <textarea
+            value={airMeta["policy_desc"] || ""}
+            onChange={e => setAirMeta("policy_desc", e.target.value)}
+            disabled={!isUserEnv}
+            placeholder="예: 당사는 '무사고 무유출' 원칙 아래 대기오염물질 법정 기준의 80% 이내 운영을 목표로 합니다. 2030년까지 VOC 배출 20% 감축, 유해화학물질 사용량 15% 저감 계획. 연 1회 외부 전문기관 검증."
+            style={{ width: "100%", minHeight: 200, padding: 10, fontSize: 12, border: `1px solid ${T.g200}`, borderRadius: 5, resize: "vertical", fontFamily: "inherit", background: isUserEnv ? T.white : T.g50 }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // 🛡️ GRI 403: 산업안전보건 2018
 // ═══════════════════════════════════════════════════════════════════════
 function GRI403Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
@@ -5434,6 +5643,60 @@ function Dash({ scopeData, blockData, blocks, standards }) {
         })}
       </div>
     </div>
+
+    {/* 🎯 이중중대성평가 현황 카드 (v22) */}
+    {(() => {
+      const matData = (blockData["materiality_v1"] && blockData["materiality_v1"].content_json) || {};
+      const responses = matData.responses || {};
+      const applicable = Object.values(responses).filter(r => r && r.applicable === true).length;
+      const assessed = Object.values(responses).filter(r => r && r.applicable === true && r.impact > 0 && r.financial > 0).length;
+      const confirmed = matData.confirmed;
+      const coreTopics = matData.coreTopics || [];
+      const topicProgress = applicable > 0 ? Math.round(assessed / applicable * 100) : 0;
+      const totalProgress = Math.round(
+        ((Object.keys(responses).length > 0 ? 1 : 0) * 20 +
+         (applicable > 0 ? 1 : 0) * 20 +
+         (assessed > 0 ? assessed / 15 * 30 : 0) +
+         (confirmed ? 1 : 0) * 30)
+      );
+
+      return (
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 24, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>🎯 이중중대성평가 진행 현황</span>
+              <span style={{ fontSize: 10, background: T.emerald, color: T.white, padding: "2px 8px", borderRadius: 3, fontWeight: 700, marginLeft: 8 }}>NEW</span>
+            </div>
+            <span style={{ fontSize: 24, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{totalProgress}%</span>
+          </div>
+          <Bar pct={totalProgress} color={T.emerald} h={6}/>
+          <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+            <div style={{ padding: 10, background: T.emeraldBg, borderRadius: 6 }}>
+              <div style={{ fontSize: 10, color: T.g500, marginBottom: 2 }}>해당 주제</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.g900 }}>{applicable} <span style={{ fontSize: 11, color: T.g500 }}>/ 15</span></div>
+            </div>
+            <div style={{ padding: 10, background: T.emeraldBg, borderRadius: 6 }}>
+              <div style={{ fontSize: 10, color: T.g500, marginBottom: 2 }}>평가 완료</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.g900 }}>{assessed} <span style={{ fontSize: 11, color: T.g500 }}>/ {applicable}</span></div>
+            </div>
+            <div style={{ padding: 10, background: T.emeraldBg, borderRadius: 6 }}>
+              <div style={{ fontSize: 10, color: T.g500, marginBottom: 2 }}>핵심 이슈</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.g900 }}>{coreTopics.length}<span style={{ fontSize: 11, color: T.g500 }}>개</span></div>
+            </div>
+            <div style={{ padding: 10, background: confirmed ? T.emeraldBg : T.g100, borderRadius: 6 }}>
+              <div style={{ fontSize: 10, color: T.g500, marginBottom: 2 }}>확정 여부</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: confirmed ? T.emerald : T.g400, marginTop: 2 }}>{confirmed ? "✓ 확정 완료" : "미확정"}</div>
+            </div>
+          </div>
+          {coreTopics.length > 0 && (
+            <div style={{ marginTop: 14, padding: 10, background: "#fef3c7", borderRadius: 6 }}>
+              <div style={{ fontSize: 10, color: "#92400e", fontWeight: 700, marginBottom: 4 }}>🎯 핵심 이슈 (보고서 우선 공시 대상)</div>
+              <div style={{ fontSize: 11, color: "#92400e" }}>{coreTopics.join(" · ")}</div>
+            </div>
+          )}
+        </div>
+      );
+    })()}
     <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 24 }}>
       <span style={{ fontSize: 14, fontWeight: 600, color: T.g800, display: "block", marginBottom: 16 }}>부서별 담당 항목 진행률</span>
       {Object.entries(DEPTS).map(([k, d]) => {
@@ -5621,6 +5884,57 @@ function App() {
             <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>NEW</span>
           </button>
 
+          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>중요성평가</p>
+          {(() => {
+            const MAT_SUBS = [
+              { key: "topics", icon: "📋", label: "1. 주제 진단" },
+              { key: "assess", icon: "⚖️", label: "2. 이중 평가" },
+              { key: "matrix", icon: "📊", label: "3. 결과 매트릭스" },
+              { key: "confirm", icon: "🎯", label: "4. 핵심 주제 확정" },
+              { key: "report", icon: "📝", label: "5. 보고서 생성", badge: "NEW" },
+            ];
+            const matActive = pg.startsWith("materiality_");
+            return (
+              <div style={{ marginBottom: 8 }}>
+                <button onClick={() => setPg("materiality_topics")}
+                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "none",
+                    background: matActive ? T.g100 : "transparent",
+                    color: matActive ? T.g900 : T.g600,
+                    fontSize: 13, fontWeight: matActive ? 700 : 500,
+                    textAlign: "left", cursor: "pointer",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    marginBottom: 1 }}>
+                  <span>🎯 이중중대성평가</span>
+                  <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>NEW</span>
+                </button>
+                {matActive && (
+                  <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.g200}`, marginBottom: 6 }}>
+                    {MAT_SUBS.map(sub => {
+                      const subPgKey = "materiality_" + sub.key;
+                      const isSubActive = pg === subPgKey;
+                      return (
+                        <button key={sub.key} onClick={() => setPg(subPgKey)}
+                          style={{ width: "100%", padding: "5px 10px", borderRadius: 4, border: "none",
+                            background: isSubActive ? T.emeraldBg : "transparent",
+                            color: isSubActive ? T.emerald : T.g500,
+                            fontSize: 11.5, fontWeight: isSubActive ? 700 : 400,
+                            textAlign: "left", cursor: "pointer",
+                            display: "flex", justifyContent: "space-between", alignItems: "center",
+                            marginBottom: 1 }}>
+                          <span>
+                            <span style={{ marginRight: 4, fontSize: 11 }}>{sub.icon}</span>
+                            {sub.label}
+                          </span>
+                          {sub.badge && <span style={{ fontSize: 8, background: T.rose, color: T.white, padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{sub.badge}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>GRI 표준</p>
           {(() => {
             // 플랫폼 정의 GRI 표준 (DB 표준 + 하드코딩 추가분 병합)
@@ -5649,6 +5963,11 @@ function App() {
               { code: "306", category: "환경", title: "폐기물", subItems: [
                 { key: "generation", icon: "🗑️", label: "발생·재활용·처분", code: "306-3,4,5" },
                 { key: "policy", icon: "📝", label: "폐기물 관리 정책", code: "306-1,2" },
+              ]},
+              { code: "305", category: "환경", title: "대기·유해물질", subItems: [
+                { key: "air", icon: "💨", label: "대기오염물질", code: "305-7" },
+                { key: "chem", icon: "⚗️", label: "유해화학물질" },
+                { key: "policy", icon: "📝", label: "관리 정책" },
               ]},
               // 사회
               { code: "403", category: "사회", title: "산업안전보건", subItems: [
@@ -5746,6 +6065,11 @@ function App() {
         {pg === "dash" && <Dash scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards}/>}
         {pg === "report" && <ReportPreview scopeData={scopeData} blockData={blockData}/>}
         
+        {/* 🎯 이중중대성평가 (v21) */}
+        {pg.startsWith("materiality_") && (
+          <MaterialityPanel subPage={pg.replace("materiality_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
         {/* GRI 102 — 기존 BlockPanel 사용 */}
         {pg.startsWith("gri_102_") && (() => {
           const subPage = pg.replace("gri_102_", "");
@@ -5770,6 +6094,11 @@ function App() {
         {/* GRI 306 폐기물 */}
         {pg.startsWith("gri_306_") && (
           <GRI306Panel subPage={pg.replace("gri_306_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* GRI 305 대기·유해물질 (v22) */}
+        {pg.startsWith("gri_305_") && (
+          <GRI305Panel subPage={pg.replace("gri_305_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
         )}
         
         {/* GRI 403 안전보건 */}
@@ -5800,6 +6129,710 @@ function App() {
     </div>
   );
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// MaterialityPanel — 이중중대성평가 모듈 (v21)
+// 방법론: GRI 3 Material Topics 2021 + ESRS 1 Materiality + K-ESG 가이드라인 매핑
+// 특화: 중소·반도체·화학 협력사 셀프 진단 · 보고서 초안 자동 생성
+// ══════════════════════════════════════════════════════════════════════════
+
+// ────────────────────────────────────────────────────────────────────────
+// 15개 주제 상수 (환경 6 · 사회 5 · 지배구조 4)
+// ────────────────────────────────────────────────────────────────────────
+const MATERIALITY_TOPICS = [
+  // 환경 (E)
+  { code: "E1", cat: "환경", color: "emerald", title: "기후변화·온실가스",
+    desc: "사업장·가치사슬에서 발생하는 Scope 1/2/3 온실가스 배출과 기후 리스크 관리",
+    gri: ["GRI 305", "GRI 102"], kesg: ["E-1", "E-2-1", "E-2-2"],
+    impactQ: "온실가스 배출이 기후 변화에 미치는 영향은?",
+    financialQ: "탄소세·배출권·고객 요구 등 기후 관련 비용·기회가 우리 사업에 미치는 영향은?" },
+  { code: "E2", cat: "환경", color: "emerald", title: "에너지 관리",
+    desc: "전력·연료·신재생 사용량과 에너지 효율 개선",
+    gri: ["GRI 302", "GRI 103"], kesg: ["E-3", "E-4"],
+    impactQ: "에너지 사용이 환경(자원·배출)에 미치는 영향은?",
+    financialQ: "에너지 비용·효율·전환이 수익성에 미치는 영향은?" },
+  { code: "E3", cat: "환경", color: "emerald", title: "용수·폐수",
+    desc: "취수·사용·방류 전 과정의 수자원 관리",
+    gri: ["GRI 303"], kesg: ["E-5-1", "E-5-2"],
+    impactQ: "용수 사용·폐수 배출이 지역 수자원·수생 생태계에 미치는 영향은?",
+    financialQ: "용수 규제·수질 사고·비용이 사업에 미치는 영향은?" },
+  { code: "E4", cat: "환경", color: "emerald", title: "폐기물·순환경제",
+    desc: "폐기물 발생·재활용·처분 관리 및 자원 순환",
+    gri: ["GRI 306"], kesg: ["E-6"],
+    impactQ: "폐기물 처리가 환경·지역에 미치는 영향은?",
+    financialQ: "폐기물 처리 비용·재활용 수익·규제 대응이 사업에 미치는 영향은?" },
+  { code: "E5", cat: "환경", color: "emerald", title: "대기오염·유해물질",
+    desc: "NOx·SOx·먼지 등 대기오염물질 및 유해화학물질 관리",
+    gri: ["GRI 305", "GRI 306"], kesg: ["E-7"],
+    impactQ: "대기오염물질·유해화학물질이 주민 건강·환경에 미치는 영향은?",
+    financialQ: "대기 규제·화학물질 관리·사고 비용이 사업에 미치는 영향은?" },
+  { code: "E6", cat: "환경", color: "emerald", title: "원자재·자원 효율",
+    desc: "원자재 사용량·재생원료 비율·자원 효율성",
+    gri: ["GRI 301"], kesg: ["E-8"],
+    impactQ: "원자재 조달·소비가 자연 자원·환경에 미치는 영향은?",
+    financialQ: "원자재 가격 변동·공급 리스크가 수익성에 미치는 영향은?" },
+
+  // 사회 (S)
+  { code: "S1", cat: "사회", color: "blue", title: "임직원 안전·보건",
+    desc: "산업안전·직업병 예방·비상 대응",
+    gri: ["GRI 403"], kesg: ["S-5", "S-6"],
+    impactQ: "작업장 안전·보건 이슈가 임직원·협력사 근로자에 미치는 영향은?",
+    financialQ: "산재·중대재해·안전 규제가 사업에 미치는 영향은?" },
+  { code: "S2", cat: "사회", color: "blue", title: "교육·인재 육성",
+    desc: "임직원 역량 개발·경력 관리·리더 양성",
+    gri: ["GRI 404"], kesg: ["S-4"],
+    impactQ: "인재 육성·교육이 임직원 성장·고용 가능성에 미치는 영향은?",
+    financialQ: "핵심 인재 확보·유지가 사업 경쟁력에 미치는 영향은?" },
+  { code: "S3", cat: "사회", color: "blue", title: "다양성·공정 처우",
+    desc: "성별·세대·장애 등 다양성 및 차별 금지",
+    gri: ["GRI 405", "GRI 406"], kesg: ["S-3"],
+    impactQ: "다양성·차별 관련 이슈가 임직원·사회에 미치는 영향은?",
+    financialQ: "인재 유치·조직 혁신·ESG 평가가 사업에 미치는 영향은?" },
+  { code: "S4", cat: "사회", color: "blue", title: "공급망 노동·인권",
+    desc: "협력사 근로자 인권·아동·강제노동 방지·공급망 실사",
+    gri: ["GRI 408", "GRI 409", "GRI 414"], kesg: ["S-8"],
+    impactQ: "공급망 인권 이슈가 협력사 근로자·지역사회에 미치는 영향은?",
+    financialQ: "공급망 실사 규제·평판 리스크가 사업에 미치는 영향은?" },
+  { code: "S5", cat: "사회", color: "blue", title: "지역사회·고객 안전",
+    desc: "지역사회 영향·기여 및 제품 안전",
+    gri: ["GRI 413", "GRI 416"], kesg: ["S-9", "S-10"],
+    impactQ: "지역사회·고객 안전에 미치는 영향은?",
+    financialQ: "지역 수용성·제품 안전 이슈가 사업에 미치는 영향은?" },
+
+  // 지배구조 (G)
+  { code: "G1", cat: "지배구조", color: "violet", title: "윤리·반부패",
+    desc: "부패 방지·준법·내부 통제",
+    gri: ["GRI 205"], kesg: ["G-4"],
+    impactQ: "부패·윤리 이슈가 이해관계자·시장에 미치는 영향은?",
+    financialQ: "법규 위반·과징금·평판 훼손이 사업에 미치는 영향은?" },
+  { code: "G2", cat: "지배구조", color: "violet", title: "정보보호·데이터 보안",
+    desc: "개인정보·영업기밀·사이버 보안",
+    gri: ["GRI 418"], kesg: ["G-6"],
+    impactQ: "정보 유출이 고객·이해관계자에 미치는 영향은?",
+    financialQ: "사이버 공격·정보 유출·규제 대응이 사업에 미치는 영향은?" },
+  { code: "G3", cat: "지배구조", color: "violet", title: "제품 품질·책임",
+    desc: "제품 품질·안전·고객 만족",
+    gri: ["GRI 416", "GRI 417"], kesg: ["G-5"],
+    impactQ: "제품 결함·오사용이 고객에 미치는 영향은?",
+    financialQ: "품질 사고·리콜·고객 이탈이 사업에 미치는 영향은?" },
+  { code: "G4", cat: "지배구조", color: "violet", title: "공급망 투명성",
+    desc: "공급망 ESG 평가·공정 거래·리스크 관리",
+    gri: ["GRI 308", "GRI 414"], kesg: ["G-7"],
+    impactQ: "공급망 운영이 ESG 전반에 미치는 영향은?",
+    financialQ: "공급망 중단·ESG 평가·고객 요구가 사업에 미치는 영향은?" },
+];
+
+// ────────────────────────────────────────────────────────────────────────
+// 업계 벤치마크 시드 (6개사 실측치 기반 · 9개 주제만 확보됨)
+// ────────────────────────────────────────────────────────────────────────
+const INDUSTRY_BENCHMARK = {
+  E1: { impact: 0.72, financial: 0.55, n: 6 },
+  E2: { impact: 0.65, financial: 0.50, n: 6 },
+  E3: { impact: 0.48, financial: 0.32, n: 6 },
+  E4: { impact: 0.55, financial: 0.42, n: 6 },
+  E5: { impact: 0.52, financial: 0.38, n: 6 },
+  E6: { impact: 0.58, financial: 0.50, n: 6 },
+  S1: { impact: 0.62, financial: 0.48, n: 6 },
+  S2: { impact: 0.42, financial: 0.38, n: 6 },
+  S3: { impact: 0.45, financial: 0.32, n: 5 },
+  // S4·S5·G1~G4: 데이터 축적 중
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// 평가 로직
+// ────────────────────────────────────────────────────────────────────────
+const LIKERT_MAP = { 0: 0, 1: 0.2, 2: 0.4, 3: 0.6, 4: 0.8, 5: 1.0 };
+const LIKERT_LABELS = {
+  0: "해당 없음",
+  1: "매우 낮음",
+  2: "낮음",
+  3: "보통",
+  4: "높음",
+  5: "매우 높음",
+};
+
+function calculateMateriality(responses) {
+  // responses: { E1: {applicable: true, impact: 4, financial: 3}, ... }
+  const applicable = MATERIALITY_TOPICS.filter(t => {
+    const r = responses[t.code];
+    return r && r.applicable && r.impact > 0 && r.financial > 0;
+  });
+
+  const scored = applicable.map(t => {
+    const r = responses[t.code];
+    const impactVal = LIKERT_MAP[r.impact] || 0;
+    const financialVal = LIKERT_MAP[r.financial] || 0;
+    const total = (impactVal + financialVal) / 2;
+    return {
+      code: t.code,
+      title: t.title,
+      cat: t.cat,
+      color: t.color,
+      impact: impactVal,
+      financial: financialVal,
+      total,
+      gri: t.gri,
+      kesg: t.kesg,
+    };
+  });
+
+  scored.sort((a, b) => b.total - a.total);
+
+  // 핵심 이슈: 상위 5개 또는 total >= 0.6
+  const n = scored.length;
+  const coreCount = Math.min(5, Math.max(1, Math.ceil(n * 0.35)));
+  return {
+    all: scored,
+    core: scored.slice(0, coreCount),
+    manage: scored.slice(coreCount, coreCount + Math.ceil(n * 0.35)),
+    monitor: scored.slice(coreCount + Math.ceil(n * 0.35)),
+  };
+}
+
+function compareToBenchmark(code, impact, financial) {
+  const b = INDUSTRY_BENCHMARK[code];
+  if (!b) return null;
+  const impactDiff = impact - b.impact;
+  const financialDiff = financial - b.financial;
+  const impactSig = Math.abs(impactDiff) > 0.15 ? (impactDiff > 0 ? "above" : "below") : "similar";
+  const financialSig = Math.abs(financialDiff) > 0.15 ? (financialDiff > 0 ? "above" : "below") : "similar";
+  return { impactSig, financialSig, impactDiff, financialDiff, benchmark: b };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 보고서 문단 자동 생성 (템플릿 기반)
+// ────────────────────────────────────────────────────────────────────────
+function generateReportParagraphs(result) {
+  const { core, manage, monitor } = result;
+
+  // 방법론 섹션
+  const methodology = `당사는 GRI 3: Material Topics 2021의 공식 4단계 절차에 따라 이중중대성평가를 수행하였습니다. ESRS 1 Materiality Assessment 및 한국 산업통상자원부 K-ESG 가이드라인의 진단항목을 참조하여 반도체·화학 중소기업에 적합한 15개 주제를 선정하였으며, 각 주제에 대해 환경·사회에 미치는 영향(Impact Materiality)과 사업에 미치는 재무 영향(Financial Materiality)을 각각 평가하였습니다.`;
+
+  // 핵심 이슈 섹션
+  let coreText = "";
+  if (core.length > 0) {
+    const coreList = core.map(c => `「${c.title}」`).join(", ");
+    coreText = `평가 결과, ${coreList} ${core.length}개 주제가 당사의 핵심 중요 이슈로 도출되었습니다. 이들 주제는 환경·사회 영향과 재무 영향이 모두 높게 평가되어, 보고서의 주요 공시 대상으로 선정되었습니다.`;
+  }
+
+  // 각 핵심 이슈 상세
+  const coreDetails = core.map(c => {
+    const griList = c.gri.join(", ");
+    const kesgList = c.kesg.join(", ");
+    return `■ ${c.title}\n  · GRI 연계: ${griList}\n  · K-ESG 항목: ${kesgList}\n  · 영향 중요도: ${(c.impact * 100).toFixed(0)}점 / 재무 중요도: ${(c.financial * 100).toFixed(0)}점\n  · 종합 중요도: ${(c.total * 100).toFixed(0)}점`;
+  }).join("\n\n");
+
+  // 관리 이슈 섹션
+  let manageText = "";
+  if (manage.length > 0) {
+    const mList = manage.map(m => `「${m.title}」`).join(", ");
+    manageText = `${mList}는 관리 이슈로 분류되어, 지속적 모니터링 및 개선 활동을 통해 리스크를 관리해 나갈 계획입니다.`;
+  }
+
+  return { methodology, coreText, coreDetails, manageText };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 매트릭스 SVG 렌더러
+// ────────────────────────────────────────────────────────────────────────
+function MaterialityMatrix({ result, width = 640, height = 480 }) {
+  const padding = { top: 40, right: 40, bottom: 60, left: 70 };
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  const xScale = v => padding.left + v * plotW;
+  const yScale = v => padding.top + (1 - v) * plotH;
+
+  const colorMap = { emerald: "#10b981", blue: "#3b82f6", violet: "#8b5cf6" };
+
+  return (
+    <svg width={width} height={height} style={{ background: "#fafafa", borderRadius: 8 }}>
+      {/* 배경 사분면 */}
+      <rect x={padding.left + plotW * 0.5} y={padding.top} width={plotW * 0.5} height={plotH * 0.5} fill="#fef3c7" opacity="0.3" />
+      <text x={padding.left + plotW * 0.75} y={padding.top + 20} textAnchor="middle" fontSize="11" fill="#92400e" fontWeight="700">핵심 이슈</text>
+
+      {/* 중앙선 */}
+      <line x1={xScale(0.5)} y1={padding.top} x2={xScale(0.5)} y2={padding.top + plotH} stroke="#e5e7eb" strokeDasharray="4,4" />
+      <line x1={padding.left} y1={yScale(0.5)} x2={padding.left + plotW} y2={yScale(0.5)} stroke="#e5e7eb" strokeDasharray="4,4" />
+
+      {/* 축 */}
+      <line x1={padding.left} y1={padding.top + plotH} x2={padding.left + plotW} y2={padding.top + plotH} stroke="#6b7280" strokeWidth="1.5" />
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotH} stroke="#6b7280" strokeWidth="1.5" />
+
+      {/* 축 레이블 */}
+      <text x={padding.left + plotW / 2} y={height - 15} textAnchor="middle" fontSize="12" fill="#374151" fontWeight="600">환경·사회 영향 (Impact) →</text>
+      <text x={20} y={padding.top + plotH / 2} textAnchor="middle" fontSize="12" fill="#374151" fontWeight="600" transform={`rotate(-90, 20, ${padding.top + plotH / 2})`}>재무 영향 (Financial) →</text>
+
+      {/* 데이터 포인트 */}
+      {result.all.map((d, i) => {
+        const cx = xScale(d.impact);
+        const cy = yScale(d.financial);
+        const isCore = result.core.some(c => c.code === d.code);
+        return (
+          <g key={d.code}>
+            <circle cx={cx} cy={cy} r={isCore ? 10 : 7} fill={colorMap[d.color]} opacity={isCore ? 0.9 : 0.55} stroke="#fff" strokeWidth="2" />
+            <text x={cx} y={cy + 3} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="700">{d.code}</text>
+          </g>
+        );
+      })}
+
+      {/* 업계 중위값 점선 (모든 핵심 주제에 공통 적용) */}
+      {/* 평균 계산 */}
+      {(() => {
+        const bms = Object.values(INDUSTRY_BENCHMARK);
+        if (bms.length === 0) return null;
+        const avgImpact = bms.reduce((s, b) => s + b.impact, 0) / bms.length;
+        const avgFinancial = bms.reduce((s, b) => s + b.financial, 0) / bms.length;
+        return (
+          <g>
+            <line x1={xScale(avgImpact)} y1={padding.top} x2={xScale(avgImpact)} y2={padding.top + plotH} stroke="#9ca3af" strokeDasharray="2,3" opacity="0.6" />
+            <line x1={padding.left} y1={yScale(avgFinancial)} x2={padding.left + plotW} y2={yScale(avgFinancial)} stroke="#9ca3af" strokeDasharray="2,3" opacity="0.6" />
+            <text x={xScale(avgImpact) + 4} y={padding.top + 12} fontSize="9" fill="#6b7280">업계 평균</text>
+          </g>
+        );
+      })()}
+    </svg>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 메인 컴포넌트
+// ────────────────────────────────────────────────────────────────────────
+function MaterialityPanel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const MAT_KEY = "materiality_v1";
+  const data = (blockData[MAT_KEY] && blockData[MAT_KEY].content_json) || {};
+  const responses = data.responses || {};
+
+  const updateResponse = (code, patch) => {
+    const newResponses = { ...responses, [code]: { ...(responses[code] || {}), ...patch } };
+    setBlockData(MAT_KEY, { content_json: { ...data, responses: newResponses }, content_text: null });
+  };
+
+  // 서브페이지 라우팅
+  if (subPage === "topics") return <TopicsPage responses={responses} updateResponse={updateResponse} />;
+  if (subPage === "assess") return <AssessPage responses={responses} updateResponse={updateResponse} />;
+  if (subPage === "matrix") return <MatrixPage responses={responses} />;
+  if (subPage === "confirm") return <ConfirmPage responses={responses} data={data} setBlockData={setBlockData} MAT_KEY={MAT_KEY} />;
+  if (subPage === "report") return <ReportPage responses={responses} data={data} setBlockData={setBlockData} MAT_KEY={MAT_KEY} />;
+
+  return <TopicsPage responses={responses} updateResponse={updateResponse} />;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 서브페이지 1: 주제 진단 (해당 O/X)
+// ────────────────────────────────────────────────────────────────────────
+function TopicsPage({ responses, updateResponse }) {
+  const totalCount = MATERIALITY_TOPICS.length;
+  const checkedCount = MATERIALITY_TOPICS.filter(t => responses[t.code] && responses[t.code].applicable !== undefined).length;
+
+  return (
+    <div style={{ maxWidth: 980 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>🎯 중요성평가 · 1단계: 주제 진단</h2>
+        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>
+          우리 회사에 해당하는 ESG 주제를 선택하세요. <strong>"해당 없음"</strong>으로 표시한 주제는 평가에서 제외됩니다.
+        </p>
+        <p style={{ fontSize: 12, color: "#9ca3af" }}>
+          GRI 3 공식 절차 · VSME "if applicable" 원칙 적용 · 응답: {checkedCount} / {totalCount}
+        </p>
+      </div>
+
+      {["환경", "사회", "지배구조"].map(cat => {
+        const topics = MATERIALITY_TOPICS.filter(t => t.cat === cat);
+        const catColor = { "환경": "#10b981", "사회": "#3b82f6", "지배구조": "#8b5cf6" }[cat];
+        const catIcon = { "환경": "🌱", "사회": "👥", "지배구조": "⚖️" }[cat];
+        return (
+          <div key={cat} style={{ marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 16 }}>{catIcon}</span>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: catColor, margin: 0 }}>{cat}</h3>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>{topics.length}개 주제</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+              {topics.map(t => {
+                const r = responses[t.code] || {};
+                const isApp = r.applicable === true;
+                const isNotApp = r.applicable === false;
+                return (
+                  <div key={t.code} style={{ background: "#fff", border: `1px solid ${isApp ? catColor : isNotApp ? "#e5e7eb" : "#e5e7eb"}`, borderRadius: 8, padding: 14, opacity: isNotApp ? 0.5 : 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: catColor, background: catColor + "15", padding: "2px 6px", borderRadius: 3 }}>{t.code}</span>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{t.title}</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0", lineHeight: 1.5 }}>{t.desc}</p>
+                        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>
+                          GRI: {t.gri.join(" · ")} &nbsp;|&nbsp; K-ESG: {t.kesg.join(" · ")}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 140 }}>
+                        <button onClick={() => updateResponse(t.code, { applicable: true })}
+                          style={{ padding: "6px 10px", fontSize: 12, fontWeight: 600, border: `1.5px solid ${isApp ? catColor : "#e5e7eb"}`, background: isApp ? catColor : "#fff", color: isApp ? "#fff" : "#6b7280", borderRadius: 6, cursor: "pointer" }}>
+                          ✓ 해당됨
+                        </button>
+                        <button onClick={() => updateResponse(t.code, { applicable: false })}
+                          style={{ padding: "6px 10px", fontSize: 12, fontWeight: 600, border: `1.5px solid ${isNotApp ? "#6b7280" : "#e5e7eb"}`, background: isNotApp ? "#6b7280" : "#fff", color: isNotApp ? "#fff" : "#6b7280", borderRadius: 6, cursor: "pointer" }}>
+                          ✗ 해당 없음
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      <div style={{ background: "#f0fdf4", border: "1px solid #10b981", borderRadius: 8, padding: 14, marginTop: 20, fontSize: 12, color: "#065f46" }}>
+        💡 <strong>Tip</strong> · 의심스러우면 "해당됨"으로 선택하고 다음 단계에서 평가를 낮게 주세요. "해당 없음"은 명확히 무관한 경우만 사용하는 것이 좋습니다.
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 서브페이지 2: 이중 평가 (영향 × 재무)
+// ────────────────────────────────────────────────────────────────────────
+function AssessPage({ responses, updateResponse }) {
+  const applicable = MATERIALITY_TOPICS.filter(t => responses[t.code] && responses[t.code].applicable === true);
+  const evaluated = applicable.filter(t => responses[t.code].impact > 0 && responses[t.code].financial > 0).length;
+
+  if (applicable.length === 0) {
+    return (
+      <div style={{ maxWidth: 700, padding: 40, textAlign: "center" }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 12 }}>평가할 주제가 없습니다</h2>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>먼저 <strong>1단계 주제 진단</strong>에서 해당되는 주제를 선택해주세요.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 980 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>⚖️ 중요성평가 · 2단계: 이중 평가</h2>
+        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>
+          각 주제의 <strong>환경·사회 영향(Impact)</strong>과 <strong>재무 영향(Financial)</strong>을 각각 평가하세요.
+        </p>
+        <p style={{ fontSize: 12, color: "#9ca3af" }}>진행: {evaluated} / {applicable.length}</p>
+      </div>
+
+      {applicable.map(t => {
+        const r = responses[t.code] || {};
+        const catColor = { "환경": "#10b981", "사회": "#3b82f6", "지배구조": "#8b5cf6" }[t.cat];
+        const bm = compareToBenchmark(t.code, LIKERT_MAP[r.impact] || 0, LIKERT_MAP[r.financial] || 0);
+
+        return (
+          <div key={t.code} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: catColor, background: catColor + "15", padding: "2px 6px", borderRadius: 3 }}>{t.code}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{t.title}</span>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              {/* 영향 평가 */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 }}>🌍 환경·사회 영향</div>
+                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8, lineHeight: 1.5 }}>{t.impactQ}</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[0, 1, 2, 3, 4, 5].map(v => (
+                    <button key={v} onClick={() => updateResponse(t.code, { impact: v })}
+                      style={{ flex: 1, padding: "6px 4px", fontSize: 10, fontWeight: 600, border: `1.5px solid ${r.impact === v ? catColor : "#e5e7eb"}`, background: r.impact === v ? catColor : "#fff", color: r.impact === v ? "#fff" : "#6b7280", borderRadius: 5, cursor: "pointer" }}>
+                      {v}<br /><span style={{ fontSize: 8 }}>{LIKERT_LABELS[v]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 재무 평가 */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4 }}>💰 재무 영향</div>
+                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8, lineHeight: 1.5 }}>{t.financialQ}</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[0, 1, 2, 3, 4, 5].map(v => (
+                    <button key={v} onClick={() => updateResponse(t.code, { financial: v })}
+                      style={{ flex: 1, padding: "6px 4px", fontSize: 10, fontWeight: 600, border: `1.5px solid ${r.financial === v ? catColor : "#e5e7eb"}`, background: r.financial === v ? catColor : "#fff", color: r.financial === v ? "#fff" : "#6b7280", borderRadius: 5, cursor: "pointer" }}>
+                      {v}<br /><span style={{ fontSize: 8 }}>{LIKERT_LABELS[v]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 벤치마크 비교 + 검증 경고 */}
+            {bm && r.impact > 0 && r.financial > 0 && (
+              <div style={{ marginTop: 10, padding: "6px 10px", background: "#f3f4f6", borderRadius: 5, fontSize: 10, color: "#6b7280" }}>
+                📊 업계 평균 대비: 영향 {bm.impactSig === "above" ? `▲ ${(bm.impactDiff * 100).toFixed(0)}점 높음` : bm.impactSig === "below" ? `▼ ${(Math.abs(bm.impactDiff) * 100).toFixed(0)}점 낮음` : "비슷"} / 재무 {bm.financialSig === "above" ? `▲ ${(bm.financialDiff * 100).toFixed(0)}점 높음` : bm.financialSig === "below" ? `▼ ${(Math.abs(bm.financialDiff) * 100).toFixed(0)}점 낮음` : "비슷"} (n={bm.benchmark.n})
+              </div>
+            )}
+
+            {/* ⚠️ 검증 경고 (0% 경고 · 업계 평균 대비 과도한 저평가) */}
+            {(() => {
+              const impactVal = LIKERT_MAP[r.impact] || 0;
+              const financialVal = LIKERT_MAP[r.financial] || 0;
+              const warnings = [];
+
+              // 0% 경고 (해당된다고 했는데 둘 다 0점)
+              if (r.impact === 0 && r.financial === 0 && r.applicable === true) {
+                warnings.push("해당된다고 표시하셨는데 영향·재무 모두 0점입니다. 정말 관리할 이슈가 없는지 재확인을 권장합니다.");
+              }
+
+              // 업계 평균 대비 50% 이상 낮음 (시드 있는 주제만)
+              if (bm) {
+                if (bm.impactDiff < -0.3) {
+                  warnings.push(`영향 평가가 업계 평균보다 ${(Math.abs(bm.impactDiff) * 100).toFixed(0)}점 낮습니다. 동종 업계에서는 중요하게 보는 이슈로, 재검토를 권장합니다.`);
+                }
+                if (bm.financialDiff < -0.3) {
+                  warnings.push(`재무 평가가 업계 평균보다 ${(Math.abs(bm.financialDiff) * 100).toFixed(0)}점 낮습니다. 규제·고객 요구 변화를 고려하여 재검토를 권장합니다.`);
+                }
+              }
+
+              // 반도체·화학 특화 경고 (E1·S1은 절대 낮으면 안 됨)
+              if ((t.code === "E1" || t.code === "S1") && (impactVal < 0.4 || financialVal < 0.4)) {
+                warnings.push(`반도체·화학 제조업에서 「${t.title}」은 전 업계 공통 핵심 이슈입니다. 점수가 낮게 평가된 근거를 명확히 해주세요.`);
+              }
+
+              if (warnings.length === 0) return null;
+              return (
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 5 }}>
+                  {warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: 11, color: "#92400e", lineHeight: 1.5, marginBottom: i < warnings.length - 1 ? 4 : 0 }}>
+                      ⚠️ {w}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 서브페이지 3: 매트릭스
+// ────────────────────────────────────────────────────────────────────────
+function MatrixPage({ responses }) {
+  const result = calculateMateriality(responses);
+
+  if (result.all.length === 0) {
+    return (
+      <div style={{ maxWidth: 700, padding: 40, textAlign: "center" }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 12 }}>평가 결과가 없습니다</h2>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>먼저 <strong>1·2단계</strong>를 완료해주세요.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 980 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>📊 중요성평가 · 3단계: 결과 매트릭스</h2>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>평가된 {result.all.length}개 주제의 영향 × 재무 분포</p>
+      </div>
+
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 20, marginBottom: 20 }}>
+        <MaterialityMatrix result={result} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <ResultBox title="🎯 핵심 이슈" color="#d97706" bg="#fef3c7" items={result.core} desc="보고서 우선 공시 대상" />
+        <ResultBox title="📋 관리 이슈" color="#2563eb" bg="#dbeafe" items={result.manage} desc="지속적 관리·모니터링" />
+        <ResultBox title="👀 참고 이슈" color="#6b7280" bg="#f3f4f6" items={result.monitor} desc="변화 추적" />
+      </div>
+    </div>
+  );
+}
+
+function ResultBox({ title, color, bg, items, desc }) {
+  return (
+    <div style={{ background: bg, borderRadius: 8, padding: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 10 }}>{desc}</div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#9ca3af", fontStyle: "italic" }}>해당 없음</div>
+      ) : items.map(i => (
+        <div key={i.code} style={{ background: "#fff", padding: "6px 10px", borderRadius: 5, marginBottom: 4, fontSize: 11, display: "flex", justifyContent: "space-between" }}>
+          <span><strong>{i.code}</strong> {i.title}</span>
+          <span style={{ color: "#9ca3af" }}>{(i.total * 100).toFixed(0)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 서브페이지 4: 확정
+// ────────────────────────────────────────────────────────────────────────
+function ConfirmPage({ responses, data, setBlockData, MAT_KEY }) {
+  const result = calculateMateriality(responses);
+  const confirmed = data.confirmed || false;
+  const confirmedAt = data.confirmedAt;
+
+  const handleConfirm = () => {
+    setBlockData(MAT_KEY, {
+      content_json: { ...data, confirmed: true, confirmedAt: new Date().toISOString(), coreTopics: result.core.map(c => c.code) },
+      content_text: null,
+    });
+  };
+
+  if (result.all.length === 0) {
+    return (
+      <div style={{ maxWidth: 700, padding: 40, textAlign: "center" }}>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>먼저 평가를 완료해주세요.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>🎯 중요성평가 · 4단계: 핵심 주제 확정</h2>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>아래 {result.core.length}개 주제가 보고서 필수 공시 대상으로 확정됩니다.</p>
+      </div>
+
+      <div style={{ background: "#fff", border: "2px solid #d97706", borderRadius: 8, padding: 18, marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: "#92400e", marginBottom: 12 }}>🎯 확정 대상 핵심 이슈</h3>
+        {result.core.map(c => (
+          <div key={c.code} style={{ padding: "10px 12px", background: "#fef3c7", borderRadius: 5, marginBottom: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <strong>{c.code}</strong> · {c.title}
+                <div style={{ fontSize: 10, color: "#92400e", marginTop: 2 }}>GRI: {c.gri.join(" · ")} &nbsp;|&nbsp; K-ESG: {c.kesg.join(" · ")}</div>
+              </div>
+              <div style={{ fontSize: 11, color: "#92400e" }}>종합 {(c.total * 100).toFixed(0)}점</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {confirmed ? (
+        <div style={{ background: "#d1fae5", border: "1px solid #10b981", borderRadius: 8, padding: 14, fontSize: 13, color: "#065f46" }}>
+          ✓ <strong>확정 완료</strong> · {new Date(confirmedAt).toLocaleDateString("ko-KR")} · 보고서 공시에 자동 반영됩니다.
+        </div>
+      ) : (
+        <button onClick={handleConfirm} style={{ width: "100%", padding: "12px 20px", fontSize: 14, fontWeight: 700, background: "#d97706", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>
+          ✓ 핵심 주제 확정하기
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 서브페이지 5: 보고서 문단 자동 생성 ⭐ 캐시카우 훅
+// ────────────────────────────────────────────────────────────────────────
+function ReportPage({ responses, data, setBlockData, MAT_KEY }) {
+  const result = calculateMateriality(responses);
+  const paragraphs = generateReportParagraphs(result);
+  const stakeholderNotes = data.stakeholderNotes || "";
+
+  const updateStakeholderNotes = (v) => {
+    setBlockData(MAT_KEY, { content_json: { ...data, stakeholderNotes: v }, content_text: null });
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+      alert("복사되었습니다.");
+    });
+  };
+
+  const printReport = () => {
+    window.print();
+  };
+
+  if (result.all.length === 0) {
+    return (
+      <div style={{ maxWidth: 700, padding: 40, textAlign: "center" }}>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>먼저 평가를 완료해주세요.</p>
+      </div>
+    );
+  }
+
+  const stakeholderSection = stakeholderNotes ?
+    `\n\n[이해관계자 의견 반영]\n${stakeholderNotes}` : "";
+
+  const fullText = `
+[이중중대성평가]
+
+${paragraphs.methodology}
+
+${paragraphs.coreText}
+
+${paragraphs.coreDetails}
+
+${paragraphs.manageText}${stakeholderSection}
+  `.trim();
+
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>📝 중요성평가 · 5단계: 보고서 문단 자동 생성</h2>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>지속가능경영 보고서의 중요성평가 섹션에 그대로 사용할 수 있는 초안입니다.</p>
+      </div>
+
+      {/* 이해관계자 의견 입력 (GRI 3 필수 요건) */}
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: "#1e40af", marginBottom: 6 }}>💬 이해관계자 의견 (선택)</h3>
+        <p style={{ fontSize: 11, color: "#1e40af", marginBottom: 10, lineHeight: 1.5 }}>
+          GRI 3-1-c 요건 · 이해관계자(고객·협력사·임직원·지역사회 등)의 의견을 어떻게 수렴·반영했는지 간단히 기록하면 자동 생성 문단에 포함됩니다.
+        </p>
+        <textarea
+          value={stakeholderNotes}
+          onChange={e => updateStakeholderNotes(e.target.value)}
+          placeholder="예: 주요 고객사 ESG 평가 설문, 협력사 대표자 간담회(연 2회), 임직원 ESG 인식 조사(2024) 결과를 반영하였습니다."
+          style={{ width: "100%", minHeight: 80, padding: 10, fontSize: 12, border: "1px solid #bfdbfe", borderRadius: 5, resize: "vertical", fontFamily: "inherit" }}
+        />
+      </div>
+
+      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 20, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: "#111827", margin: 0 }}>📄 자동 생성 문단</h3>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={printReport} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, background: "#6b7280", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer" }}>
+              🖨 PDF로 저장
+            </button>
+            <button onClick={() => copyToClipboard(fullText)} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, background: "#10b981", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer" }}>
+              📋 전체 복사
+            </button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 13, lineHeight: 1.7, color: "#374151" }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: "#111827" }}>■ 방법론</div>
+          <p style={{ margin: "0 0 16px 0", whiteSpace: "pre-wrap" }}>{paragraphs.methodology}</p>
+
+          <div style={{ fontWeight: 700, marginBottom: 8, color: "#111827" }}>■ 핵심 이슈 도출 결과</div>
+          <p style={{ margin: "0 0 16px 0", whiteSpace: "pre-wrap" }}>{paragraphs.coreText}</p>
+
+          <div style={{ fontWeight: 700, marginBottom: 8, color: "#111827" }}>■ 핵심 이슈별 상세</div>
+          <pre style={{ margin: "0 0 16px 0", whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 12, background: "#f9fafb", padding: 12, borderRadius: 5 }}>{paragraphs.coreDetails}</pre>
+
+          {paragraphs.manageText && (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 8, color: "#111827" }}>■ 관리 이슈</div>
+              <p style={{ margin: "0 0 16px 0", whiteSpace: "pre-wrap" }}>{paragraphs.manageText}</p>
+            </>
+          )}
+
+          {stakeholderNotes && (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 8, color: "#111827" }}>■ 이해관계자 의견 반영</div>
+              <p style={{ margin: "0", whiteSpace: "pre-wrap" }}>{stakeholderNotes}</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div style={{ background: "#eff6ff", border: "1px solid #3b82f6", borderRadius: 8, padding: 14, fontSize: 12, color: "#1e40af" }}>
+        💡 이 문단은 <strong>GRI 3 Material Topics 2021 공시 요건</strong>을 충족하는 기본 골격입니다. 실제 보고서에 사용하실 때는 회사 맥락·이해관계자 의견 반영을 추가하시기 바랍니다.
+      </div>
+    </div>
+  );
+}
+
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
