@@ -109,6 +109,38 @@ const getYearValue = (data, year) => {
   return parseFloat(data) || 0;
 };
 
+// ═══════════════════════════════════════════════════════════════════════
+// 📦 GRI 103 에너지 관련 상수
+// ═══════════════════════════════════════════════════════════════════════
+
+// 연료별 발열량 (저위발열량 LHV 기준, IPCC 2006 가이드라인 + 환경부고시 제2024-155호)
+// 단위: MJ/단위(ℓ, kg, Nm³ 등) → TJ 환산 시 × 10^-6
+const FUEL_HEAT = {
+  lng:      { name: "LNG (도시가스)", unit: "Nm³", heat: 39.4, renewable: false },  // MJ/Nm³
+  lpg:      { name: "LPG (프로판)", unit: "kg", heat: 46.4, renewable: false },      // MJ/kg
+  kero:     { name: "등유", unit: "ℓ", heat: 36.6, renewable: false },
+  diesel:   { name: "경유", unit: "ℓ", heat: 37.7, renewable: false },
+  gasoline: { name: "휘발유", unit: "ℓ", heat: 32.6, renewable: false },
+  bcoil:    { name: "B-C유 (중유)", unit: "ℓ", heat: 40.5, renewable: false },
+  biomass:  { name: "바이오매스", unit: "ton", heat: 11800, renewable: true },       // MJ/ton
+  solar:    { name: "태양광 (자가소비)", unit: "kWh", heat: 3.6, renewable: true },   // MJ/kWh (1kWh = 3.6MJ)
+  wind:     { name: "풍력 (자가소비)", unit: "kWh", heat: 3.6, renewable: true },
+};
+
+// GJ 환산 계수 (MWh → GJ)
+const KWH_TO_GJ = 0.0036;  // 1 kWh = 0.0036 GJ = 3.6 MJ
+
+// 전력 → GJ 환산
+const kwhToGJ = (kwh) => kwh * KWH_TO_GJ;
+
+// 연료 → GJ 환산 (연료 사용량 × 발열량 MJ → GJ)
+const fuelToGJ = (fuelId, amount) => {
+  const f = FUEL_HEAT[fuelId];
+  if (!f || !amount) return 0;
+  // 바이오매스는 MJ/ton이라 스케일 조정 불필요
+  return (amount * f.heat) / 1000; // MJ → GJ
+};
+
 // 3년치 구조에 연도별 값 설정
 const setYearValue = (data, year, value) => {
   const base = (typeof data === "object" && data !== null) 
@@ -3862,6 +3894,1119 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// ⚡ GRI 103: 에너지 2025
+// ═══════════════════════════════════════════════════════════════════════
+function GRI103Panel({ subPage, scopeData, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserEnv = ce("env") || isAdmin;
+  
+  const energyMeta = blockData["_103_meta"] || {};
+  const setEnergyMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_103_meta": { ...(d["_103_meta"] || {}), [key]: val } }));
+  };
+  
+  const calcFuelEnergyGJ = (year) => {
+    let total = 0;
+    const s1 = scopeData.s1 || {};
+    const fuelMap = { gas: "gasoline", diesel_m: "diesel", diesel_b: "diesel", lng: "lng", lpg: "lpg", lpg_m: "lpg", kero: "kero", bcoil: "bcoil" };
+    for (const [fId, mapId] of Object.entries(fuelMap)) {
+      const raw = s1[fId];
+      let amount = 0;
+      if (typeof raw === "object" && raw !== null) amount = parseFloat(raw[year]) || 0;
+      else if (year === YEAR_LATEST) amount = parseFloat(raw) || 0;
+      if (amount > 0) total += fuelToGJ(mapId, amount);
+    }
+    return total;
+  };
+  
+  const calcElectricityGJ = (year) => {
+    const s2 = scopeData.s2 || {};
+    let kwh = parseFloat(s2["yearly_val_" + year]) || 0;
+    if (!kwh && year === YEAR_LATEST) kwh = parseFloat(s2.yearly_val) || 0;
+    if (!kwh) {
+      const m = s2["_monthly_" + year];
+      if (Array.isArray(m)) kwh = m.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+    }
+    return kwhToGJ(kwh);
+  };
+  
+  const getSelfRenewableGJ = (year) => parseFloat(energyMeta["self_renew_" + year]) || 0;
+  
+  const calcTotalEnergyGJ = (year) => 
+    calcFuelEnergyGJ(year) + calcElectricityGJ(year) + getSelfRenewableGJ(year);
+  
+  const energyByYear = REPORT_YEARS.map(y => ({
+    year: y,
+    fuel: calcFuelEnergyGJ(y),
+    electricity: calcElectricityGJ(y),
+    renewable: getSelfRenewableGJ(y),
+    total: calcTotalEnergyGJ(y),
+  }));
+  
+  const Header = ({ icon, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>환경</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} GRI 103: 에너지 2025</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+  
+  if (subPage === "consumption" || !subPage) {
+    const latest = energyByYear[2];
+    const renewablePct = latest.total > 0 ? (latest.renewable / latest.total * 100) : 0;
+    return (
+      <div>
+        <Header icon="⚡" sub="조직 내 총 에너지 소비량 (GRI 103-2) — 연료·구매전력·자체생산 재생에너지 자동 합산"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>총 에너지 소비 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.total.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ</p>
+          </div>
+          <div style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>연료 (Scope 1)</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.fuel.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ · 비재생</p>
+          </div>
+          <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>구매전력 (Scope 2)</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.electricity.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>재생에너지 비율</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{renewablePct.toFixed(1)}%</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>자체 생산 기준</p>
+          </div>
+        </div>
+        <div style={{ padding: 14, background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, marginBottom: 16 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 4 }}>🔗 GRI 102와 자동 연동</p>
+          <p style={{ fontSize: 12, color: T.g600, lineHeight: 1.6 }}>
+            Scope 1 연료(휘발유·경유·LNG·LPG·등유 등)와 Scope 2 전력은 GRI 102에서 입력한 데이터를 <strong>발열량 기준으로 자동 환산(GJ)</strong>합니다.
+            여기서는 <strong>자체 생산 재생에너지</strong>(태양광·풍력 자가소비)만 별도로 입력하세요.
+          </p>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", marginBottom: 20 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 3년치 에너지 소비량 (단위: GJ)</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}` }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>구분</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, color: y === YEAR_LATEST ? T.g800 : T.g500, fontWeight: 600 }}>
+                    {y}년{y === YEAR_LATEST ? " (최신)" : ""}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: `1px solid ${T.g100}` }}>
+                <td style={{ padding: "10px 14px", color: T.g700 }}>🔥 연료 소비 (비재생) <span style={{ fontSize: 10, color: T.g400 }}>- 103-2-a</span></td>
+                {energyByYear.map(e => (
+                  <td key={e.year} style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g800, fontFeatureSettings: "'tnum'" }}>
+                    {e.fuel > 0 ? e.fuel.toFixed(1) : "-"}
+                  </td>
+                ))}
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${T.g100}` }}>
+                <td style={{ padding: "10px 14px", color: T.g700 }}>⚡ 구매 전력 <span style={{ fontSize: 10, color: T.g400 }}>- 103-2-b</span></td>
+                {energyByYear.map(e => (
+                  <td key={e.year} style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g800, fontFeatureSettings: "'tnum'" }}>
+                    {e.electricity > 0 ? e.electricity.toFixed(1) : "-"}
+                  </td>
+                ))}
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${T.g100}` }}>
+                <td style={{ padding: "10px 14px", color: T.g700 }}>☀️ 자체 생산 재생에너지 <span style={{ fontSize: 10, color: T.g400 }}>- 103-2-c · 수동 입력 (GJ)</span></td>
+                {REPORT_YEARS.map(y => (
+                  <td key={y} style={{ padding: "4px 8px", textAlign: "right" }}>
+                    <input type="number" value={energyMeta["self_renew_" + y] || ""}
+                      disabled={!isUserEnv}
+                      onChange={e => setEnergyMeta("self_renew_" + y, e.target.value)}
+                      placeholder="0"
+                      style={{ width: 100, padding: "6px 10px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                        fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserEnv ? T.white : T.g50 }} />
+                  </td>
+                ))}
+              </tr>
+              <tr style={{ background: T.g50 }}>
+                <td style={{ padding: "12px 14px", color: T.g900, fontWeight: 800 }}>조직 내 총 에너지 소비</td>
+                {energyByYear.map(e => (
+                  <td key={e.year} style={{ padding: "12px 14px", textAlign: "right", fontWeight: 800, color: T.g900, fontSize: 14, fontFeatureSettings: "'tnum'" }}>
+                    {e.total.toFixed(1)}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 11, color: T.g400, lineHeight: 1.6, paddingTop: 8 }}>
+          💡 발열량 출처: 환경부고시 제2024-155호 [별표 12] · 전력 환산: 1 kWh = 0.0036 GJ · 연료 → MJ 발열량 × 사용량 → GJ.
+        </p>
+      </div>
+    );
+  }
+  
+  if (subPage === "intensity") {
+    const latest = energyByYear[2];
+    const revenue = parseFloat(energyMeta["revenue_" + YEAR_LATEST]) || 0;
+    const production = parseFloat(energyMeta["production_" + YEAR_LATEST]) || 0;
+    const employees = parseFloat(energyMeta["employees_" + YEAR_LATEST]) || 0;
+    const iR = revenue > 0 ? (latest.total / revenue).toFixed(2) : "-";
+    const iP = production > 0 ? (latest.total / production).toFixed(2) : "-";
+    const iE = employees > 0 ? (latest.total / employees).toFixed(2) : "-";
+    return (
+      <div>
+        <Header icon="📏" sub="에너지 집약도 비율 (GRI 103-4) — 에너지 소비량 ÷ 분모(매출·생산량·임직원 수)"/>
+        <div style={{ padding: 14, background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, marginBottom: 16 }}>
+          <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.6 }}>
+            💡 집약도는 에너지 효율성을 측정하는 지표입니다. 회사에 해당되는 분모만 입력하세요.
+          </p>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20, marginBottom: 16 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 14 }}>📝 조직별 지표 (분모) 입력</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+            {[
+              { key: "revenue", label: "매출액 (억원)", icon: "💰" },
+              { key: "production", label: "생산량 (톤)", icon: "🏭" },
+              { key: "employees", label: "임직원 수 (명)", icon: "👥" },
+            ].map(m => (
+              <div key={m.key}>
+                <p style={{ fontSize: 11, color: T.g500, marginBottom: 6, fontWeight: 500 }}>{m.icon} {m.label}</p>
+                {REPORT_YEARS.map(y => (
+                  <div key={y} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: T.g400, width: 40 }}>{y}년</span>
+                    <input type="number" value={energyMeta[m.key + "_" + y] || ""}
+                      disabled={!isUserEnv}
+                      onChange={e => setEnergyMeta(m.key + "_" + y, e.target.value)}
+                      placeholder="0"
+                      style={{ flex: 1, padding: "6px 10px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                        fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserEnv ? T.white : T.g50 }} />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>매출 집약도</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{iR}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ / 억원</p>
+          </div>
+          <div style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>생산량 집약도</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{iP}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ / 톤</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>인당 집약도</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{iE}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ / 명</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (subPage === "reduction") {
+    const baseYear = parseInt(energyMeta["base_year"]) || REPORT_YEARS[0];
+    const baseEnergy = calcTotalEnergyGJ(baseYear);
+    const currentEnergy = energyByYear[2].total;
+    const reduction = baseEnergy - currentEnergy;
+    const reductionPct = baseEnergy > 0 ? (reduction / baseEnergy * 100) : 0;
+    return (
+      <div>
+        <Header icon="📉" sub="에너지 소비 감축 실적 (GRI 103-5) — 기준연도 대비 감축량·감축률"/>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20, marginBottom: 16 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 14 }}>📌 기준연도 설정</p>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: T.g500, width: 80 }}>기준연도:</span>
+            <select value={energyMeta["base_year"] || REPORT_YEARS[0]}
+              disabled={!isUserEnv}
+              onChange={e => setEnergyMeta("base_year", e.target.value)}
+              style={{ padding: "6px 10px", borderRadius: 5, border: `1px solid ${T.g200}`, fontSize: 12, fontWeight: 600 }}>
+              {REPORT_YEARS.map(y => <option key={y} value={y}>{y}년</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 12, color: T.g500, width: 80, paddingTop: 6 }}>선택 근거:</span>
+            <textarea value={energyMeta["base_reason"] || ""}
+              disabled={!isUserEnv}
+              onChange={e => setEnergyMeta("base_reason", e.target.value)}
+              placeholder="예: 당사 ESG 경영 선언 연도 / 생산 규모 안정화 첫 해"
+              style={{ flex: 1, padding: "8px 12px", borderRadius: 5, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 60, resize: "vertical" }} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.g50, border: `1px solid ${T.g200}`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>기준 ({baseYear})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{baseEnergy.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ</p>
+          </div>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>현재 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{currentEnergy.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ</p>
+          </div>
+          <div style={{ background: reduction > 0 ? T.emeraldBg : T.roseBg, border: `1px solid ${reduction > 0 ? T.emerald : T.rose}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>감축량</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: reduction > 0 ? T.emerald : T.rose, fontFeatureSettings: "'tnum'" }}>
+              {reduction > 0 ? "▼" : "▲"} {Math.abs(reduction).toFixed(1)}
+            </p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ</p>
+          </div>
+          <div style={{ background: reduction > 0 ? T.emeraldBg : T.roseBg, border: `1px solid ${reduction > 0 ? T.emerald : T.rose}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>감축률</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: reduction > 0 ? T.emerald : T.rose, fontFeatureSettings: "'tnum'" }}>
+              {reduction > 0 ? "▼" : "▲"} {Math.abs(reductionPct).toFixed(1)}%
+            </p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>기준 대비</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 14 }}>📝 감축 활동 서술</p>
+          <textarea value={energyMeta["reduction_activities"] || ""}
+            disabled={!isUserEnv}
+            onChange={e => setEnergyMeta("reduction_activities", e.target.value)}
+            placeholder="예: 2024년 공정 재설계를 통해 LNG 사용량 12% 감축. 고효율 보일러 교체 (2,500 GJ 절감). 사무동 LED 전환 (180 GJ)."
+            style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1px solid ${T.g200}`, fontSize: 13, minHeight: 140, resize: "vertical", lineHeight: 1.6 }} />
+        </div>
+      </div>
+    );
+  }
+  
+  if (subPage === "policy") {
+    return (
+      <div>
+        <Header icon="📝" sub="에너지 정책 및 약속 (GRI 103-1) — 에너지 관리 방침, 목표, 거버넌스"/>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {[
+            { key: "policy_statement", label: "에너지 정책 방침", placeholder: "예: 당사는 파리협정 1.5°C 경로 부합을 위해 2030년까지 에너지 소비 10% 감축을 목표로 합니다. ISO 50001 에너지경영시스템을 구축·운영합니다." },
+            { key: "policy_target", label: "에너지 관리 목표", placeholder: "예: 단기(~2026년) 연 1.5% 감축 / 중기(~2030년) 누적 10% 감축 / 장기 재생에너지 비중 30%" },
+            { key: "policy_governance", label: "거버넌스 체계", placeholder: "예: 대표이사 직속 ESG위원회 분기 개최, 에너지경영위원회 월 1회, 전사 FEMS 실시간 관리" },
+            { key: "policy_iso", label: "적용 표준 및 인증", placeholder: "예: ISO 50001 에너지경영 / ISO 14001 환경경영 / IPCC 2006 / GHG Protocol Scope 2 Guidance" },
+          ].map(f => (
+            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
+              <textarea value={energyMeta[f.key] || ""}
+                disabled={!isUserEnv}
+                onChange={e => setEnergyMeta(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🗑️ GRI 306: 폐기물 2020
+// ═══════════════════════════════════════════════════════════════════════
+function GRI306Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserFac = ce("fac") || ce("env") || isAdmin;
+  const wasteMeta = blockData["_306_meta"] || {};
+  const setWasteMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_306_meta": { ...(d["_306_meta"] || {}), [key]: val } }));
+  };
+  
+  const WASTE_TYPES = [
+    { id: "general", name: "일반폐기물 (사업장)", hazard: false },
+    { id: "designated", name: "지정폐기물 (유해)", hazard: true },
+    { id: "recycle_paper", name: "재활용 (종이·골판지)", recyclable: true },
+    { id: "recycle_plastic", name: "재활용 (플라스틱)", recyclable: true },
+    { id: "recycle_metal", name: "재활용 (금속)", recyclable: true },
+    { id: "sludge", name: "폐수처리 슬러지", hazard: true },
+  ];
+  
+  const getAmount = (wId, year) => parseFloat(wasteMeta[wId + "_" + year]) || 0;
+  
+  const yearTotals = REPORT_YEARS.map(y => {
+    const t = WASTE_TYPES.reduce((acc, w) => {
+      const amount = getAmount(w.id, y);
+      acc.total += amount;
+      if (w.hazard) acc.hazard += amount;
+      if (w.recyclable) acc.recycle += amount;
+      return acc;
+    }, { total: 0, hazard: 0, recycle: 0 });
+    t.recyclePct = t.total > 0 ? (t.recycle / t.total * 100) : 0;
+    t.year = y;
+    return t;
+  });
+  
+  const Header = ({ icon, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>환경</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} GRI 306: 폐기물 2020</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+  
+  if (subPage === "generation" || !subPage) {
+    const latest = yearTotals[2];
+    return (
+      <div>
+        <Header icon="🗑️" sub="폐기물 발생·재활용·처분 (GRI 306-3, 4, 5) — 일반·지정·재활용 3년치 관리"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>총 발생량 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.total.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>ton</p>
+          </div>
+          <div style={{ background: T.roseBg, border: `1px solid ${T.rose}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>지정폐기물 (유해)</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.hazard.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>ton</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>재활용량</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.recycle.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>ton</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>재활용률</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.recyclePct.toFixed(1)}%</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>전체 대비</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 폐기물 종류별 3년치 발생량 (단위: ton)</p>
+            <p style={{ fontSize: 11, color: T.g500, marginTop: 4 }}>💡 사업장 폐기물 배출자 신고서 또는 올바로시스템 데이터 활용</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>종류</th>
+                <th style={{ padding: "10px 14px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600, width: 90 }}>특성</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: y === YEAR_LATEST ? T.g800 : T.g500, fontWeight: 600 }}>
+                    {y}년{y === YEAR_LATEST ? " (최신)" : ""}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {WASTE_TYPES.map((w, i) => (
+                <tr key={w.id} style={{ borderBottom: i < WASTE_TYPES.length - 1 ? `1px solid ${T.g100}` : "none" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{w.name}</td>
+                  <td style={{ padding: "10px 14px", textAlign: "center", fontSize: 10 }}>
+                    {w.hazard && <span style={{ color: T.rose, fontWeight: 700, background: T.roseBg, padding: "2px 6px", borderRadius: 3 }}>⚠ 유해</span>}
+                    {w.recyclable && <span style={{ color: T.emerald, fontWeight: 700, background: T.emeraldBg, padding: "2px 6px", borderRadius: 3 }}>♻ 재활용</span>}
+                  </td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={wasteMeta[w.id + "_" + y] || ""}
+                        disabled={!isUserFac}
+                        onChange={e => setWasteMeta(w.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "90%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserFac ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 11, color: T.g400, lineHeight: 1.6, marginTop: 12 }}>
+          💡 <strong>306-3 발생량</strong>: 전체 합계 · <strong>306-4 재활용</strong>: ♻ 태그 · <strong>306-5 처분</strong>: 일반·지정폐기물.
+          근거: 폐기물관리법 시행령 [별표 4, 5].
+        </p>
+      </div>
+    );
+  }
+  
+  if (subPage === "policy") {
+    return (
+      <div>
+        <Header icon="📝" sub="폐기물 관리 정책 (GRI 306-1, 2) — 자원순환 목표·감량·재활용"/>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {[
+            { key: "reduction_target", label: "감량 목표", placeholder: "예: 2030년까지 폐기물 발생량 20% 감축 / 재활용률 70% 달성" },
+            { key: "separation_system", label: "분리배출 및 처리 체계", placeholder: "예: 사내 7종 분리배출 · 지정폐기물 전문 처리업체 위탁" },
+            { key: "recycling_activities", label: "재활용·감량 활동", placeholder: "예: 공정 폐용제 재회수 시스템 도입으로 연 15% 감축 · 포장재 간소화" },
+            { key: "compliance", label: "법규 준수 및 인증", placeholder: "예: 폐기물관리법 준수 · 올바로시스템 등록 · ISO 14001 환경경영 인증" },
+          ].map(f => (
+            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
+              <textarea value={wasteMeta[f.key] || ""}
+                disabled={!isUserFac}
+                onChange={e => setWasteMeta(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 💧 GRI 303: 용수·폐수 2018
+// ═══════════════════════════════════════════════════════════════════════
+function GRI303Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserFac = ce("fac") || ce("env") || isAdmin;
+  const waterMeta = blockData["_303_meta"] || {};
+  const setWaterMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_303_meta": { ...(d["_303_meta"] || {}), [key]: val } }));
+  };
+  
+  const WATER_SOURCES = [
+    { id: "municipal", name: "상수도 (지방자치단체)" },
+    { id: "groundwater", name: "지하수" },
+    { id: "surface", name: "하천수·저수지" },
+    { id: "reused", name: "재이용수 (공정수 재순환)" },
+  ];
+  
+  const getWater = (sId, year) => parseFloat(waterMeta[sId + "_" + year]) || 0;
+  
+  const yearData = REPORT_YEARS.map(y => {
+    const intake = WATER_SOURCES.reduce((s, w) => s + getWater(w.id, y), 0);
+    const discharge = parseFloat(waterMeta["discharge_" + y]) || 0;
+    return { year: y, intake, discharge, consumption: intake - discharge };
+  });
+  
+  const Header = ({ icon, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>환경</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} GRI 303: 용수·폐수 2018</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+  
+  if (subPage === "usage" || !subPage) {
+    const latest = yearData[2];
+    return (
+      <div>
+        <Header icon="💧" sub="용수 취수·방류·소비 (GRI 303-3, 4, 5) — 원수 구분 + 폐수 처리"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>총 취수량 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.intake.toLocaleString()}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>m³</p>
+          </div>
+          <div style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>방류량</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.discharge.toLocaleString()}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>m³</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>소비량</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.consumption.toLocaleString()}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>m³</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 용수 원수별 3년치 취수량 (단위: m³)</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>원수 구분</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {WATER_SOURCES.map(w => (
+                <tr key={w.id} style={{ borderBottom: `1px solid ${T.g100}` }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{w.name}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={waterMeta[w.id + "_" + y] || ""}
+                        disabled={!isUserFac}
+                        onChange={e => setWaterMeta(w.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "90%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserFac ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr style={{ background: T.amberBg, borderTop: `2px solid ${T.amber}33` }}>
+                <td style={{ padding: "10px 14px", fontWeight: 700, color: T.g900 }}>💧 방류량 (하수·폐수 처리 후)</td>
+                {REPORT_YEARS.map(y => (
+                  <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                    <input type="number" value={waterMeta["discharge_" + y] || ""}
+                      disabled={!isUserFac}
+                      onChange={e => setWaterMeta("discharge_" + y, e.target.value)}
+                      placeholder="0"
+                      style={{ width: "90%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.amber}`,
+                        fontSize: 12, fontWeight: 700, textAlign: "right", background: T.white }} />
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 11, color: T.g400, lineHeight: 1.6 }}>
+          💡 물 수지: <strong>취수량 = 방류량 + 소비량</strong>. 공정수 증발·제품 흡수가 소비.
+          상수도 고지서·지하수 계량기·하수도 사용량 부과서 참고.
+        </p>
+      </div>
+    );
+  }
+  
+  if (subPage === "policy") {
+    return (
+      <div>
+        <Header icon="📝" sub="용수 관리 정책 (GRI 303-1, 2) — 취수·방류 영향 관리"/>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {[
+            { key: "policy", label: "용수 관리 정책", placeholder: "예: 당사는 공정수 재이용률 40% 이상 · 방류수 수질을 법정 기준의 50%로 관리." },
+            { key: "reduction", label: "취수량 감축 활동", placeholder: "예: 냉각수 재순환 시스템 도입 (2023) · 고효율 RO막 교체 회수율 30% 개선" },
+            { key: "discharge_quality", label: "방류수 관리", placeholder: "예: 자체 폐수처리장(200㎥/일) · 수질 TMS · 분기별 수질검사" },
+          ].map(f => (
+            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
+              <textarea value={waterMeta[f.key] || ""}
+                disabled={!isUserFac}
+                onChange={e => setWaterMeta(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🛡️ GRI 403: 산업안전보건 2018
+// ═══════════════════════════════════════════════════════════════════════
+function GRI403Panel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserAdmin = ce("admin") || ce("mgmt") || isAdmin;
+  const safetyMeta = blockData["_403_meta"] || {};
+  const setSafetyMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_403_meta": { ...(d["_403_meta"] || {}), [key]: val } }));
+  };
+  
+  const Header = ({ icon, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>사회</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} GRI 403: 산업안전보건 2018</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+  
+  if (subPage === "incidents" || !subPage) {
+    const calcRate = (count, hours) => !hours ? 0 : (count * 1000000) / hours;
+    const latest = {
+      fatalities: parseFloat(safetyMeta["fatalities_" + YEAR_LATEST]) || 0,
+      recordable: parseFloat(safetyMeta["recordable_" + YEAR_LATEST]) || 0,
+      hours: parseFloat(safetyMeta["hours_" + YEAR_LATEST]) || 0,
+    };
+    const trifr = calcRate(latest.recordable, latest.hours);
+    return (
+      <div>
+        <Header icon="🛡️" sub="산업재해 지표 (GRI 403-9) — 사망·중대재해·재해율 3년치"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.roseBg, border: `1px solid ${T.rose}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>사망자 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.rose, fontFeatureSettings: "'tnum'" }}>{latest.fatalities}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명</p>
+          </div>
+          <div style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>기록가능 재해</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.recordable}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>건</p>
+          </div>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>근로시간</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{(latest.hours / 1000).toFixed(0)}K</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>시간</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>재해율 (TRIFR)</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{trifr.toFixed(2)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>건/백만시간</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 재해 통계 3년치 입력</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>지표</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "fatalities", label: "사망자 수 (명)", crit: true },
+                { id: "serious", label: "중대재해 (3일 이상 결근, 명)" },
+                { id: "recordable", label: "기록가능 재해 건수 (건)" },
+                { id: "lost_days", label: "근로손실일수 (일)" },
+                { id: "hours", label: "총 근로시간 (시간)" },
+              ].map((ind, i, arr) => (
+                <tr key={ind.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${T.g100}` : "none", background: ind.crit ? T.roseBg + "44" : "transparent" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{ind.label}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={safetyMeta[ind.id + "_" + y] || ""}
+                        disabled={!isUserAdmin}
+                        onChange={e => setSafetyMeta(ind.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "85%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserAdmin ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 11, color: T.g400, lineHeight: 1.6, marginTop: 12 }}>
+          💡 <strong>TRIFR(총 기록가능 재해율)</strong>: (재해 건수 × 1,000,000) ÷ 총 근로시간. 국제 표준.
+          <br/>산업재해 신고서(안전보건공단) 활용. 중대재해처벌법 대상은 ⚠ 행에 별도 관리.
+        </p>
+      </div>
+    );
+  }
+  
+  if (subPage === "health") {
+    return (
+      <div>
+        <Header icon="🏥" sub="직업건강 및 안전교육 (GRI 403-8, 10) — 건강검진·교육·직업병"/>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 보건 지표 3년치</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>지표</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "checkup", label: "정기 건강검진 수검자 (명)" },
+                { id: "occupational_disease", label: "직업성 질환 발생 (건)" },
+                { id: "safety_edu_hours", label: "안전교육 총 시간 (시간)" },
+                { id: "safety_edu_participants", label: "안전교육 수강자 (명·누계)" },
+              ].map((ind, i, arr) => (
+                <tr key={ind.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${T.g100}` : "none" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{ind.label}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={safetyMeta[ind.id + "_" + y] || ""}
+                        disabled={!isUserAdmin}
+                        onChange={e => setSafetyMeta(ind.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "85%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserAdmin ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+  
+  if (subPage === "policy") {
+    return (
+      <div>
+        <Header icon="📝" sub="안전보건 정책 및 체계 (GRI 403-1, 2, 3, 4)"/>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {[
+            { key: "iso45001", label: "안전보건경영시스템", placeholder: "예: ISO 45001 인증 (2022 취득, 2025 재인증) · 산업안전보건법 준수 · 안전보건위원회 월 1회" },
+            { key: "risk_assessment", label: "위험성 평가 프로세스", placeholder: "예: 연 1회 정기평가 + 공정변경 수시 평가 · KRAS 기법 · 상·중·하 등급 분류" },
+            { key: "health_services", label: "보건 서비스", placeholder: "예: 협력 보건관리대행기관 월 1회 상주 · 정기 건강검진 100% · 특수검진 반기별" },
+            { key: "worker_participation", label: "근로자 참여·의사소통", placeholder: "예: 산업안전보건위원회 (근로자 대표 5명) 분기 개최 · 아차사고 신고 · 안전제안 포상" },
+            { key: "training_program", label: "교육훈련 프로그램", placeholder: "예: 신입 안전교육 24시간 · 분기 정기교육 12시간 · 관리감독자 16시간 · 외국인 모국어 교육" },
+          ].map(f => (
+            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
+              <textarea value={safetyMeta[f.key] || ""}
+                disabled={!isUserAdmin}
+                onChange={e => setSafetyMeta(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 90, resize: "vertical", lineHeight: 1.6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 👥 GRI 401·404·405: 고용·교육·다양성 통합
+// ═══════════════════════════════════════════════════════════════════════
+function GRIPeoplePanel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserAdmin = ce("admin") || ce("mgmt") || isAdmin;
+  const peopleMeta = blockData["_people_meta"] || {};
+  const setMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_people_meta": { ...(d["_people_meta"] || {}), [key]: val } }));
+  };
+  
+  const Header = ({ icon, title, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>사회</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} {title}</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+  
+  if (subPage === "employment" || !subPage) {
+    const total = parseFloat(peopleMeta["total_" + YEAR_LATEST]) || 0;
+    const newHires = parseFloat(peopleMeta["new_hires_" + YEAR_LATEST]) || 0;
+    const turnover = parseFloat(peopleMeta["turnover_" + YEAR_LATEST]) || 0;
+    const hireRate = total > 0 ? (newHires / total * 100) : 0;
+    const turnoverRate = total > 0 ? (turnover / total * 100) : 0;
+    return (
+      <div>
+        <Header icon="👥" title="GRI 401: 고용" sub="신규채용·이직률 (GRI 401-1) — 인원 유동성 관리"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>총 임직원 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{total}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>신규 채용</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{newHires}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명 ({hireRate.toFixed(1)}%)</p>
+          </div>
+          <div style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>이직자</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{turnover}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명 ({turnoverRate.toFixed(1)}%)</p>
+          </div>
+          <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>순 증가</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: newHires - turnover >= 0 ? T.emerald : T.rose, fontFeatureSettings: "'tnum'" }}>{newHires - turnover >= 0 ? "+" : ""}{newHires - turnover}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>지표</th>
+                {REPORT_YEARS.map(y => (<th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "total", label: "총 임직원 수 (명)" },
+                { id: "new_hires", label: "신규 채용자 (명)" },
+                { id: "turnover", label: "이직자 수 (명)" },
+                { id: "new_hires_under30", label: "└ 30세 미만 신규채용 (명)" },
+                { id: "new_hires_over50", label: "└ 50세 이상 신규채용 (명)" },
+                { id: "new_hires_female", label: "└ 여성 신규채용 (명)" },
+              ].map((ind, i, arr) => (
+                <tr key={ind.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${T.g100}` : "none" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{ind.label}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={peopleMeta[ind.id + "_" + y] || ""}
+                        disabled={!isUserAdmin}
+                        onChange={e => setMeta(ind.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "85%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserAdmin ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+  
+  if (subPage === "training") {
+    const total = parseFloat(peopleMeta["total_" + YEAR_LATEST]) || 1;
+    const trainingHours = parseFloat(peopleMeta["training_hours_" + YEAR_LATEST]) || 0;
+    const perCapita = (trainingHours / total).toFixed(1);
+    return (
+      <div>
+        <Header icon="📚" title="GRI 404: 교육훈련" sub="1인당 교육시간 (GRI 404-1) — 직무·윤리·안전 교육"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>총 교육시간 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{trainingHours.toLocaleString()}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>시간</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>1인당 평균</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{perCapita}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>시간/인</p>
+          </div>
+          <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>교육비용</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{(parseFloat(peopleMeta["training_cost_" + YEAR_LATEST]) || 0).toLocaleString()}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>만원</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>지표</th>
+                {REPORT_YEARS.map(y => (<th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "training_hours", label: "총 교육훈련 시간 (시간)" },
+                { id: "training_cost", label: "교육훈련 비용 (만원)" },
+                { id: "training_participants", label: "교육 수강자 (명·누계)" },
+                { id: "ethics_edu_participants", label: "└ 윤리/반부패 교육 수강자 (명)" },
+              ].map((ind, i, arr) => (
+                <tr key={ind.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${T.g100}` : "none" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{ind.label}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={peopleMeta[ind.id + "_" + y] || ""}
+                        disabled={!isUserAdmin}
+                        onChange={e => setMeta(ind.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "85%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserAdmin ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+  
+  if (subPage === "diversity") {
+    const total = parseFloat(peopleMeta["total_" + YEAR_LATEST]) || 1;
+    const female = parseFloat(peopleMeta["female_total_" + YEAR_LATEST]) || 0;
+    const femalePct = (female / total * 100).toFixed(1);
+    const executives = parseFloat(peopleMeta["executives_" + YEAR_LATEST]) || 1;
+    const femaleExec = parseFloat(peopleMeta["female_exec_" + YEAR_LATEST]) || 0;
+    const femaleExecPct = (femaleExec / executives * 100).toFixed(1);
+    return (
+      <div>
+        <Header icon="🌈" title="GRI 405: 다양성" sub="성별·연령·임원 다양성 (GRI 405-1)"/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>여성 임직원 비율</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{femalePct}%</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>{female} / {total} 명</p>
+          </div>
+          <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>여성 임원 비율</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{femaleExecPct}%</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>{femaleExec} / {executives} 명</p>
+          </div>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>장애인 고용</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{parseFloat(peopleMeta["disabled_" + YEAR_LATEST]) || 0}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>외국인 임직원</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{parseFloat(peopleMeta["foreign_" + YEAR_LATEST]) || 0}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>명</p>
+          </div>
+        </div>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>지표</th>
+                {REPORT_YEARS.map(y => (<th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "female_total", label: "여성 임직원 수 (명)" },
+                { id: "executives", label: "전체 임원 수 (명)" },
+                { id: "female_exec", label: "└ 여성 임원 (명)" },
+                { id: "disabled", label: "장애인 임직원 (명)" },
+                { id: "foreign", label: "외국인 임직원 (명)" },
+                { id: "under30", label: "30세 미만 임직원 (명)" },
+                { id: "over50", label: "50세 이상 임직원 (명)" },
+              ].map((ind, i, arr) => (
+                <tr key={ind.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${T.g100}` : "none" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{ind.label}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={peopleMeta[ind.id + "_" + y] || ""}
+                        disabled={!isUserAdmin}
+                        onChange={e => setMeta(ind.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "85%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserAdmin ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ⚖️ GRI 205·2: 반부패 + 일반공시 통합
+// ═══════════════════════════════════════════════════════════════════════
+function GRIGovernancePanel({ subPage, blockData, setBlockData, ud, isAdmin }) {
+  const ce = d => ud === "all" || ud === d;
+  const isUserAdmin = ce("mgmt") || isAdmin;
+  const govMeta = blockData["_gov_meta"] || {};
+  const setMeta = (key, val) => {
+    setBlockData(d => ({ ...d, "_gov_meta": { ...(d["_gov_meta"] || {}), [key]: val } }));
+  };
+  
+  const Header = ({ icon, title, sub }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>지배구조</span>
+        <span style={{ color: T.g300 }}>·</span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} {title}</h2>
+      </div>
+      <p style={{ fontSize: 14, color: T.g500 }}>{sub}</p>
+    </div>
+  );
+  
+  if (subPage === "anticorruption" || !subPage) {
+    return (
+      <div>
+        <Header icon="⚖️" title="GRI 205: 반부패 2016" sub="반부패 정책·교육·위반 건수 (GRI 205-1, 2, 3)"/>
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.g800 }}>📊 반부패 지표 3년치</p>
+          </div>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+                <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: T.g500, fontWeight: 600 }}>지표</th>
+                {REPORT_YEARS.map(y => (<th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, color: T.g500, fontWeight: 600 }}>{y}년</th>))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "risk_assessed", label: "부패 위험 평가 대상 사업장 (개)" },
+                { id: "training_recipients", label: "반부패 교육 수강자 (명)" },
+                { id: "corruption_incidents", label: "확인된 부패 사건 (건)", crit: true },
+                { id: "corruption_dismissed", label: "└ 해고·징계 (건)" },
+                { id: "corruption_contracts_terminated", label: "└ 파트너사 계약 종료 (건)" },
+              ].map((ind, i, arr) => (
+                <tr key={ind.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${T.g100}` : "none", background: ind.crit ? T.roseBg + "44" : "transparent" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{ind.label}</td>
+                  {REPORT_YEARS.map(y => (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      <input type="number" value={govMeta[ind.id + "_" + y] || ""}
+                        disabled={!isUserAdmin}
+                        onChange={e => setMeta(ind.id + "_" + y, e.target.value)}
+                        placeholder="0"
+                        style={{ width: "85%", padding: "6px 8px", borderRadius: 5, border: `1px solid ${T.g200}`,
+                          fontSize: 12, fontWeight: 600, textAlign: "right", background: isUserAdmin ? T.white : T.g50 }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[
+            { key: "policy", label: "반부패 정책", placeholder: "예: 임직원 행동강령 제정 · 뇌물·리베이트 수수 엄격 금지 · 연 1회 서약서 징구" },
+            { key: "reporting_channel", label: "신고 채널", placeholder: "예: 윤리경영 홈페이지 익명 신고 · 외부 감사법인 신고센터 · 제보자 보호 규정" },
+          ].map(f => (
+            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
+              <textarea value={govMeta[f.key] || ""}
+                disabled={!isUserAdmin}
+                onChange={e => setMeta(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 80, resize: "vertical", lineHeight: 1.6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  
+  if (subPage === "organization") {
+    return (
+      <div>
+        <Header icon="🏢" title="GRI 2: 일반공시 2021" sub="조직 개요·보고 대상·지배구조 (GRI 2-1 ~ 2-9)"/>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[
+            { key: "company_name", label: "2-1 조직 법적 명칭", placeholder: "예: 와이씨켐 주식회사 (YCChem Co., Ltd.)" },
+            { key: "ownership", label: "2-1 소유·법적 형태", placeholder: "예: 비상장 주식회사 · 주주 구성" },
+            { key: "headquarters", label: "2-1 본사 소재지", placeholder: "예: 경기도 화성시 ○○○" },
+            { key: "countries", label: "2-1 활동 지역·국가", placeholder: "예: 대한민국 (경기·충남 사업장 3개)" },
+            { key: "products", label: "2-6 제품·서비스", placeholder: "예: 반도체 공정용 포토레지스트, 세정액, 특수화학소재" },
+            { key: "employees_total", label: "2-7 임직원 규모", placeholder: "예: 정규직 85명 · 계약직 12명 · 파견 3명" },
+            { key: "supply_chain", label: "2-6 공급망", placeholder: "예: 국내 원료공급사 24개사 · 주요 고객 SK하이닉스·삼성전자" },
+            { key: "reporting_period", label: "2-3 보고 기간", placeholder: "예: 2025.1.1 ~ 2025.12.31 · 연간 주기" },
+            { key: "governance_body", label: "2-9 최고 거버넌스 기관", placeholder: "예: 이사회 5명 (사내 3, 사외 2) · 분기 정기 회의" },
+            { key: "audit_external", label: "2-5 외부 검증", placeholder: "예: GRI 콘텐츠 참조보고 · BSI 제3자 검증 예정" },
+          ].map(f => (
+            <div key={f.key} style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: T.g800, marginBottom: 8 }}>{f.label}</p>
+              <textarea value={govMeta[f.key] || ""}
+                disabled={!isUserAdmin}
+                onChange={e => setMeta(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: `1px solid ${T.g200}`, fontSize: 12, minHeight: 60, resize: "vertical", lineHeight: 1.6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+// ═══════════════════════════════════════════════════════════════════════
 // 📄 보고서 미리보기 (POLICY · ACTIONS · METRICS · TARGETS 4칸)
 // 와이씨켐 v9 스타일 레이아웃
 // ═══════════════════════════════════════════════════════════════════════
@@ -4477,13 +5622,11 @@ function App() {
           </button>
 
           <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>GRI 표준</p>
-          {standards.map(s => {
-            const isActive = pg === "gri_" + s.code || pg.startsWith("gri_" + s.code + "_");
-            const isExpanded = s.code === "102" && isActive;
-            
-            // GRI 102만 서브메뉴 확장
-            if (s.code === "102") {
-              const subItems = [
+          {(() => {
+            // 플랫폼 정의 GRI 표준 (DB 표준 + 하드코딩 추가분 병합)
+            const SIDEBAR_STANDARDS = [
+              // 환경
+              { code: "102", category: "환경", title: "기후변화 (배출량)", subItems: [
                 { key: "emissions", icon: "📊", label: "배출량 (Scope 1/2/3)", badge: "우선" },
                 { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "transition", icon: "📝", label: "전환계획", code: "102-1" },
@@ -4492,58 +5635,96 @@ function App() {
                 { key: "just", icon: "👥", label: "공정한 전환", code: "102-3" },
                 { key: "removal", icon: "🌳", label: "가치사슬 제거", code: "102-9" },
                 { key: "credit", icon: "💳", label: "탄소 크레딧", code: "102-10" },
-              ];
+              ]},
+              { code: "103", category: "환경", title: "에너지", subItems: [
+                { key: "consumption", icon: "⚡", label: "에너지 소비량", code: "103-2" },
+                { key: "intensity", icon: "📏", label: "에너지 집약도", code: "103-4" },
+                { key: "reduction", icon: "📉", label: "에너지 감축", code: "103-5" },
+                { key: "policy", icon: "📝", label: "에너지 정책", code: "103-1" },
+              ]},
+              { code: "303", category: "환경", title: "용수·폐수", subItems: [
+                { key: "usage", icon: "💧", label: "취수·방류량", code: "303-3,4,5" },
+                { key: "policy", icon: "📝", label: "용수 관리 정책", code: "303-1,2" },
+              ]},
+              { code: "306", category: "환경", title: "폐기물", subItems: [
+                { key: "generation", icon: "🗑️", label: "발생·재활용·처분", code: "306-3,4,5" },
+                { key: "policy", icon: "📝", label: "폐기물 관리 정책", code: "306-1,2" },
+              ]},
+              // 사회
+              { code: "403", category: "사회", title: "산업안전보건", subItems: [
+                { key: "incidents", icon: "🛡️", label: "재해 지표", code: "403-9" },
+                { key: "health", icon: "🏥", label: "보건·교육", code: "403-8,10" },
+                { key: "policy", icon: "📝", label: "안전보건 정책", code: "403-1~4" },
+              ]},
+              { code: "people", category: "사회", title: "고용·교육·다양성", subItems: [
+                { key: "employment", icon: "👥", label: "고용·채용·이직", code: "401-1" },
+                { key: "training", icon: "📚", label: "교육훈련", code: "404-1" },
+                { key: "diversity", icon: "🌈", label: "다양성·여성임원", code: "405-1" },
+              ]},
+              // 지배구조
+              { code: "gov", category: "지배구조", title: "반부패·일반공시", subItems: [
+                { key: "anticorruption", icon: "⚖️", label: "반부패", code: "205" },
+                { key: "organization", icon: "🏢", label: "조직 개요", code: "GRI 2" },
+              ]},
+            ];
+            
+            const categoryOrder = ["환경", "사회", "지배구조"];
+            return categoryOrder.map(cat => {
+              const catStandards = SIDEBAR_STANDARDS.filter(s => s.category === cat);
+              const catColors = { "환경": T.emerald, "사회": T.blue, "지배구조": T.violet };
               return (
-                <div key={s.code}>
-                  <button onClick={() => setPg("gri_102_emissions")}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", 
-                      background: isActive ? T.g100 : "transparent", 
-                      color: isActive ? T.g900 : T.g600, 
-                      fontSize: 13, fontWeight: isActive ? 700 : 500, 
-                      textAlign: "left", cursor: "pointer", 
-                      display: "flex", justifyContent: "space-between", alignItems: "center", 
-                      marginBottom: 2 }}>
-                    <span>{s.title.replace("GRI " + s.code + ": ", "").replace(/ 202\d/, "").replace(/ 201\d/, "")}</span>
-                    <span style={{ fontSize: 10, color: T.g400 }}>{s.code}</span>
-                  </button>
-                  {isExpanded && (
-                    <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.g200}`, marginBottom: 6 }}>
-                      {subItems.map(sub => {
-                        const subPgKey = "gri_102_" + sub.key;
-                        const isSubActive = pg === subPgKey;
-                        return (
-                          <button key={sub.key} onClick={() => setPg(subPgKey)}
-                            style={{ width: "100%", padding: "6px 10px", borderRadius: 4, border: "none",
-                              background: isSubActive ? T.emeraldBg : "transparent",
-                              color: isSubActive ? T.emerald : T.g500,
-                              fontSize: 12, fontWeight: isSubActive ? 700 : 400,
-                              textAlign: "left", cursor: "pointer",
-                              display: "flex", justifyContent: "space-between", alignItems: "center",
-                              marginBottom: 1 }}>
-                            <span>
-                              <span style={{ marginRight: 4, fontSize: 11 }}>{sub.icon}</span>
-                              {sub.label}
-                            </span>
-                            {sub.badge && <span style={{ fontSize: 9, background: T.rose, color: T.white, padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>{sub.badge}</span>}
-                            {sub.code && <span style={{ fontSize: 9, color: T.g400 }}>{sub.code}</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div key={cat} style={{ marginBottom: 8 }}>
+                  <p style={{ fontSize: 9, fontWeight: 700, color: catColors[cat], letterSpacing: "0.1em", padding: "8px 10px 2px" }}>
+                    {cat === "환경" ? "🌱" : cat === "사회" ? "👥" : "⚖️"} {cat}
+                  </p>
+                  {catStandards.map(s => {
+                    const isActive = pg === "gri_" + s.code || pg.startsWith("gri_" + s.code + "_");
+                    const defaultSub = s.subItems[0].key;
+                    return (
+                      <div key={s.code}>
+                        <button onClick={() => setPg("gri_" + s.code + "_" + defaultSub)}
+                          style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "none", 
+                            background: isActive ? T.g100 : "transparent", 
+                            color: isActive ? T.g900 : T.g600, 
+                            fontSize: 13, fontWeight: isActive ? 700 : 500, 
+                            textAlign: "left", cursor: "pointer", 
+                            display: "flex", justifyContent: "space-between", alignItems: "center", 
+                            marginBottom: 1 }}>
+                          <span>{s.title}</span>
+                          <span style={{ fontSize: 10, color: T.g400 }}>{s.code}</span>
+                        </button>
+                        {isActive && (
+                          <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.g200}`, marginBottom: 6 }}>
+                            {s.subItems.map(sub => {
+                              const subPgKey = "gri_" + s.code + "_" + sub.key;
+                              const isSubActive = pg === subPgKey;
+                              return (
+                                <button key={sub.key} onClick={() => setPg(subPgKey)}
+                                  style={{ width: "100%", padding: "5px 10px", borderRadius: 4, border: "none",
+                                    background: isSubActive ? T.emeraldBg : "transparent",
+                                    color: isSubActive ? T.emerald : T.g500,
+                                    fontSize: 11.5, fontWeight: isSubActive ? 700 : 400,
+                                    textAlign: "left", cursor: "pointer",
+                                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                                    marginBottom: 1 }}>
+                                  <span>
+                                    <span style={{ marginRight: 4, fontSize: 11 }}>{sub.icon}</span>
+                                    {sub.label}
+                                  </span>
+                                  {sub.badge && <span style={{ fontSize: 8, background: T.rose, color: T.white, padding: "1px 4px", borderRadius: 3, fontWeight: 700 }}>{sub.badge}</span>}
+                                  {sub.code && !sub.badge && <span style={{ fontSize: 8, color: T.g400 }}>{sub.code}</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
-            }
-            
-            // 그 외 GRI 표준 (단일 메뉴)
-            return (
-              <button key={s.code} onClick={() => setPg("gri_" + s.code)}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "gri_" + s.code ? T.g100 : "transparent", color: pg === "gri_" + s.code ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "gri_" + s.code ? 600 : 400, textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-                <span>{s.title.replace("GRI " + s.code + ": ", "").replace(/ 202\d/, "").replace(/ 201\d/, "")}</span>
-                <span style={{ fontSize: 11, color: T.g400 }}>{s.code}</span>
-              </button>
-            );
-          })}
+            });
+          })()}
         </div>
 
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.g100}` }}>
@@ -4564,17 +5745,51 @@ function App() {
       <div style={{ flex: 1, padding: "32px 40px", overflowY: "auto", maxHeight: "100vh" }}>
         {pg === "dash" && <Dash scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards}/>}
         {pg === "report" && <ReportPreview scopeData={scopeData} blockData={blockData}/>}
+        
+        {/* GRI 102 — 기존 BlockPanel 사용 */}
+        {pg.startsWith("gri_102_") && (() => {
+          const subPage = pg.replace("gri_102_", "");
+          const standard102 = standards.find(s => s.code === "102") || { code: "102", category: "환경", title: "GRI 102: 기후변화 2025", description: "" };
+          const sBlocks = blocks.filter(b => b.gri_code === "102");
+          return <BlockPanel key={"102_" + subPage} standard={standard102} blocks={sBlocks} blockData={blockData} setBlockData={setBlockData}
+            scopeData={scopeData} setS1={setS1} setS2={setS2} setS3={setS3}
+            ud={user.dept} isAdmin={user.dept === "all"} griMap={griMap} vsmeMap={vsmeMap}
+            subPage={subPage}/>;
+        })()}
+        
+        {/* GRI 103 에너지 */}
+        {pg.startsWith("gri_103_") && (
+          <GRI103Panel subPage={pg.replace("gri_103_", "")} scopeData={scopeData} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* GRI 303 용수 */}
+        {pg.startsWith("gri_303_") && (
+          <GRI303Panel subPage={pg.replace("gri_303_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* GRI 306 폐기물 */}
+        {pg.startsWith("gri_306_") && (
+          <GRI306Panel subPage={pg.replace("gri_306_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* GRI 403 안전보건 */}
+        {pg.startsWith("gri_403_") && (
+          <GRI403Panel subPage={pg.replace("gri_403_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* GRI 401/404/405 사람 (통합) */}
+        {pg.startsWith("gri_people_") && (
+          <GRIPeoplePanel subPage={pg.replace("gri_people_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* GRI 205/2 지배구조 (통합) */}
+        {pg.startsWith("gri_gov_") && (
+          <GRIGovernancePanel subPage={pg.replace("gri_gov_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+        )}
+        
+        {/* 기존 GRI 표준 (102 외, 단일 페이지 형태 유지용) */}
         {standards.map(s => {
-          // GRI 102 서브페이지 매칭
-          if (s.code === "102" && pg.startsWith("gri_102_")) {
-            const subPage = pg.replace("gri_102_", "");
-            const sBlocks = blocks.filter(b => b.gri_code === s.code);
-            return <BlockPanel key={s.code + "_" + subPage} standard={s} blocks={sBlocks} blockData={blockData} setBlockData={setBlockData}
-              scopeData={scopeData} setS1={setS1} setS2={setS2} setS3={setS3}
-              ud={user.dept} isAdmin={user.dept === "all"} griMap={griMap} vsmeMap={vsmeMap}
-              subPage={subPage}/>;
-          }
-          // 그 외 GRI 표준
+          if (s.code === "102") return null; // 위에서 처리
           if (pg !== "gri_" + s.code) return null;
           const sBlocks = blocks.filter(b => b.gri_code === s.code);
           return <BlockPanel key={s.code} standard={s} blocks={sBlocks} blockData={blockData} setBlockData={setBlockData}
