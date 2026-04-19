@@ -541,14 +541,14 @@ function Scope1P({ data, set, ud }) {
       const parsed = [];
       let formatDetected = "unknown";
       
-      // ━━━ 포맷 A: 피티씨 타입 ━━━
-      // 시트명에 "활동도 입력" 또는 "활동도" 포함, R3~R9에 메타데이터, R10~ 월별
+      // ━━━ 포맷 A: 월별 시계열 인벤토리 툴 (세로 월별 × 가로 연료) ━━━
+      // 특징: "활동도 입력" 시트, R5 연료명, R9 단위, R10~ 월별 데이터, 연도별 합계 행
       const sheetA = wb.SheetNames.find(n => n.includes("활동도") || n.includes("1 활동"));
       if (sheetA) {
         const ws = wb.Sheets[sheetA];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
         
-        // 연도별 합계 행들 중에서 실제 데이터가 있는 가장 최근 연도 선택
+        // 유효 데이터 있는 가장 최근 연도 찾기
         const currentYear = new Date().getFullYear();
         const candidateRows = [];
         for (let i = 15; i < Math.min(150, rows.length); i++) {
@@ -556,7 +556,6 @@ function Scope1P({ data, set, ud }) {
           const v = r[1];
           const yr = parseInt(v);
           if (!isNaN(yr) && yr >= 2020 && yr <= currentYear + 1 && String(v).trim() === String(yr)) {
-            // 해당 행에 유효 데이터 (금액 아닌 값) 있는지 확인
             let hasData = false;
             const unitRow = rows[8] || [];
             for (let c = 2; c < r.length; c++) {
@@ -573,7 +572,7 @@ function Scope1P({ data, set, ud }) {
           : -1;
         
         if (annualRow > 0) {
-          formatDetected = "피티씨 에너지·온실가스 인벤토리 Tool";
+          formatDetected = "월별 시계열 인벤토리 포맷";
           const fuelNameRow = rows[4] || [];
           const unitRow = rows[8] || [];
           const valRow = rows[annualRow] || [];
@@ -584,7 +583,6 @@ function Scope1P({ data, set, ud }) {
             const val = parseFloat(valRow[c]);
             if (!val || !fuelName) continue;
             if (unit && (String(unit).includes("원") && !String(unit).includes("Nm"))) continue;
-            // 전력은 Scope2에서 처리하므로 Scope1 파서에서는 skip
             if (String(fuelName).includes("전력") || String(fuelName).includes("스팀")) continue;
             
             const fuel = matchFuel(fuelName);
@@ -600,22 +598,21 @@ function Scope1P({ data, set, ud }) {
                 fuelName: fuel.name, 
                 amount: val, 
                 unit: matchedUnit?.key || fuel.baseUnit,
-                source: `피티씨 타입 · ${String(rows[annualRow][1])}년`
+                source: `${String(rows[annualRow][1])}년 합계`
               });
             }
           }
         }
       }
       
-      // ━━━ 포맷 B: 이원그린텍 / SK하이닉스 공급망 툴 ━━━
-      // 시트명에 "Scope1" 포함, 헤더에 "사업장 | 시설 | 연료명 | 활동자료 | 단위"
+      // ━━━ 포맷 B: 공급망 가치사슬 관리 툴 (사업장·시설별 행 나열) ━━━
+      // 특징: "Scope1&2" 시트, 헤더 "사업장 | 시설 | 연료명 | 활동자료 | 단위"
       if (parsed.length === 0) {
         const sheetB = wb.SheetNames.find(n => n.includes("Scope1") || n.includes("Scope 1") || n.includes("Scope1&2"));
         if (sheetB) {
           const ws = wb.Sheets[sheetB];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
           
-          // 헤더 행 찾기
           let hdrRow = -1, fuelCol = -1, amtCol = -1, unitCol = -1, facCol = -1;
           for (let i = 0; i < Math.min(15, rows.length); i++) {
             const r = rows[i] || [];
@@ -630,13 +627,12 @@ function Scope1P({ data, set, ud }) {
           }
           
           if (hdrRow >= 0 && fuelCol >= 0 && amtCol >= 0) {
-            formatDetected = "이원그린텍 / SK하이닉스 공급망 툴 타입";
+            formatDetected = "공급망 가치사슬 관리 툴 포맷";
             for (let i = hdrRow + 1; i < rows.length; i++) {
               const r = rows[i] || [];
               const fuelName = r[fuelCol];
               const val = parseFloat(r[amtCol]);
               if (!fuelName || !val) continue;
-              // "예시" 행은 스킵
               const facName = facCol >= 0 ? String(r[facCol] || "") : "";
               if (facName.includes("예)") || String(r[0] || "").includes("예시")) continue;
               
@@ -652,8 +648,7 @@ function Scope1P({ data, set, ud }) {
                   fuelId: fuel.id,
                   fuelName: fuel.name,
                   amount: val,
-                  unit: matchedUnit?.key || fuel.baseUnit,
-                  source: "공급망 툴 타입"
+                  unit: matchedUnit?.key || fuel.baseUnit
                 });
               }
             }
@@ -703,7 +698,7 @@ function Scope1P({ data, set, ud }) {
       
       if (parsed.length === 0) {
         return { 
-          error: "인식 가능한 연료 데이터가 없습니다. 지원 포맷: ①피티씨 에너지 Tool, ②SK하이닉스 공급망 툴(이원그린텍 타입), ③연료·사용량 헤더가 있는 표준 엑셀" 
+          error: "인식 가능한 연료 데이터가 없습니다.\n\n지원 포맷:\n① 월별 시계열 인벤토리 포맷 ('활동도 입력' 시트, 연도별 합계 행)\n② 공급망 가치사슬 관리 툴 포맷 (사업장·시설별 행 나열)\n③ 범용 포맷 ([연료] [사용량] [단위] 헤더)" 
         };
       }
       
@@ -746,7 +741,7 @@ function Scope1P({ data, set, ud }) {
       {mode === "excel" && (
         <ExcelUpload
           hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
-          expectedFormat={"✅ 지원 포맷:\n① 피티씨 타입: 에너지·온실가스 인벤토리 Tool (SK하이닉스 협력사 표준)\n② 이원그린텍 타입: SK하이닉스 공급망 가치사슬 관리 툴\n③ 범용: 첫 행에 [연료] [사용량] [단위] 헤더가 있는 엑셀\n\n💡 연료명은 'LNG', 'LPG', '경유', '휘발유', '등유', 'B-C유' 자동 인식"}
+          expectedFormat={"✅ 지원 포맷:\n① 월별 시계열 인벤토리 포맷 — '활동도 입력' 시트에서 연도별 합계 자동 추출\n② 공급망 가치사슬 관리 툴 포맷 — 사업장·시설별 연료 사용량 표\n③ 범용 포맷 — 첫 행에 [연료] [사용량] [단위] 헤더가 있는 엑셀\n\n💡 연료명은 'LNG', 'LPG', '경유', '휘발유', '등유', 'B-C유' 자동 인식"}
           onParse={parseExcel}
         />
       )}
@@ -883,7 +878,7 @@ function Scope2P({ data, set, ud }) {
 
   const parseExcel = (wb) => {
     try {
-      // ━━━ 포맷 A: 피티씨 활동도 입력 시트 (전력 칼럼 찾기) ━━━
+      // ━━━ 포맷 A: 월별 시계열 인벤토리 툴 (전력 칼럼 자동 추출) ━━━
       const sheetA = wb.SheetNames.find(n => n.includes("활동도") || n.includes("1 활동"));
       if (sheetA) {
         const ws = wb.Sheets[sheetA];
@@ -929,7 +924,7 @@ function Scope2P({ data, set, ud }) {
           
           if (totalKwh > 0) {
             return {
-              message: `✅ 피티씨 에너지·온실가스 인벤토리 Tool 인식 완료 (${String(rows[annualRow][1])}년)`,
+              message: `✅ 월별 시계열 인벤토리 포맷 인식 완료 (${String(rows[annualRow][1])}년)`,
               preview: `연간 전력 사용량: ${totalKwh.toLocaleString()} kWh\n= ${(totalKwh/1000).toFixed(2)} MWh\n= ${(totalKwh/1000 * EFS2).toFixed(2)} tCO₂eq (배출계수 ${EFS2})`,
               apply: () => {
                 set("yearly_val", totalKwh);
@@ -941,7 +936,7 @@ function Scope2P({ data, set, ud }) {
         }
       }
       
-      // ━━━ 포맷 B: 이원그린텍 / SK하이닉스 공급망 Scope1&2 시트 ━━━
+      // ━━━ 포맷 B: 공급망 가치사슬 관리 툴 (Scope1&2 시트) ━━━
       const sheetB = wb.SheetNames.find(n => n.includes("Scope1&2") || n.includes("Scope 1&2") || (n.includes("Scope2") && !n.includes("EF")));
       if (sheetB) {
         const ws = wb.Sheets[sheetB];
@@ -971,7 +966,7 @@ function Scope2P({ data, set, ud }) {
         
         if (totalKwh > 0) {
           return {
-            message: `✅ 공급망 툴 타입 인식 완료`,
+            message: `✅ 공급망 가치사슬 관리 툴 포맷 인식 완료`,
             preview: `연간 전력 사용량: ${totalKwh.toLocaleString()} kWh\n= ${(totalKwh/1000).toFixed(2)} MWh\n= ${(totalKwh/1000 * EFS2).toFixed(2)} tCO₂eq`,
             apply: () => {
               set("yearly_val", totalKwh);
@@ -999,7 +994,7 @@ function Scope2P({ data, set, ud }) {
       }
       
       if (kwhCol < 0) return { 
-        error: "전력 데이터를 찾을 수 없습니다. 지원 포맷: ①피티씨 에너지 Tool, ②SK하이닉스 공급망 툴, ③한전 사이버지점 다운로드, ④[월 | 사용량(kWh)] 형식" 
+        error: "전력 데이터를 찾을 수 없습니다.\n\n지원 포맷:\n① 월별 시계열 인벤토리 포맷 ('활동도 입력' 시트)\n② 공급망 가치사슬 관리 툴 포맷\n③ 한전 사이버지점/한전ON 다운로드 (청구년월·사용량)\n④ 범용 [월 | 사용량(kWh)] 형식" 
       };
       
       // 12개월 데이터 추출
@@ -1042,7 +1037,7 @@ function Scope2P({ data, set, ud }) {
       {mode === "excel" && (
         <ExcelUpload
           hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
-          expectedFormat={"✅ 지원 포맷:\n① 피티씨 타입: 에너지·온실가스 인벤토리 Tool (전력 칼럼 자동 추출)\n② 이원그린텍 타입: SK하이닉스 공급망 가치사슬 관리 툴\n③ 한전 사이버지점 다운로드: 청구년월 + 사용량(kWh)\n④ 범용: [월 | 사용량] 형식 엑셀"}
+          expectedFormat={"✅ 지원 포맷:\n① 월별 시계열 인벤토리 포맷 — '활동도 입력' 시트에서 전력 사용량 자동 추출\n② 공급망 가치사슬 관리 툴 포맷 — 사업장별 전력 사용 데이터\n③ 한전 사이버지점/한전ON 다운로드 — 청구년월 + 사용량(kWh) 표\n④ 범용 — [월 | 사용량(kWh)] 형식 엑셀"}
           onParse={parseExcel}
         />
       )}
@@ -1098,11 +1093,11 @@ function Scope3P({ data, set, ud }) {
       const parsed = {};
       let formatDetected = "";
       
-      // ━━━ 포맷 A: SK하이닉스 공식 Scope 3 템플릿 ━━━
-      // 시트명이 "Category 1", "Category 2" ... "Category 15"로 분리됨
+      // ━━━ 포맷 A: 고객사 공식 Scope 3 템플릿 (Category 1~15 시트 분리) ━━━
+      // 특징: 시트명 "Category 1", "Category 2" ... 카테고리별로 시트 분리
       const categorySheets = wb.SheetNames.filter(n => /^Category\s*\d+$/i.test(n.trim()));
       if (categorySheets.length >= 5) {
-        formatDetected = "SK하이닉스 공식 Scope 3 템플릿";
+        formatDetected = "카테고리별 시트 분리 포맷";
         const catMap = { 1: "c1", 2: "c2", 4: "c4", 5: "c5", 6: "c6", 7: "c7" };
         
         for (const sn of categorySheets) {
@@ -1173,15 +1168,14 @@ function Scope3P({ data, set, ud }) {
         }
       }
       
-      // ━━━ 포맷 B: 이원그린텍 · 공급망 Scope3 시트 ━━━
-      // 시트명 "3. Scope3" 또는 "Scope3", 카테고리명 1~15 세로 나열
+      // ━━━ 포맷 B: 공급망 Scope3 통합 시트 (카테고리 세로 나열) ━━━
+      // 특징: 시트명 "Scope3", 카테고리 1~15를 한 시트에 세로로 나열
       if (Object.keys(parsed).length === 0) {
         const sheetB = wb.SheetNames.find(n => n.includes("Scope3") || n.includes("Scope 3"));
         if (sheetB) {
           const ws = wb.Sheets[sheetB];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
           
-          // "카테고리" + "배출량" 헤더 찾기
           let hdrRow = -1, catCol = -1, emCol = -1;
           for (let i = 0; i < Math.min(20, rows.length); i++) {
             const r = rows[i] || [];
@@ -1194,7 +1188,7 @@ function Scope3P({ data, set, ud }) {
           }
           
           if (hdrRow >= 0) {
-            formatDetected = "이원그린텍 / 공급망 Scope3 툴";
+            formatDetected = "공급망 Scope3 통합 시트 포맷";
             const catMap = {
               "1. 구매": "c1", "2. 구매한 자본재": "c2", "2. 자본재": "c2",
               "4. 업스트림": "c4", "5. 운영중 폐기물": "c5", "5. 폐기물": "c5",
@@ -1269,7 +1263,7 @@ function Scope3P({ data, set, ud }) {
       const count = Object.keys(parsed).length;
       if (count === 0) {
         return { 
-          error: "Scope 3 데이터를 찾을 수 없습니다. 지원 포맷: ①SK하이닉스 공식 Category별 시트, ②이원그린텍/공급망 Scope3 시트, ③[카테고리/거래처][비용] 매입처 집계" 
+          error: "Scope 3 데이터를 찾을 수 없습니다.\n\n지원 포맷:\n① 카테고리별 시트 분리 포맷 — 'Category 1' ~ 'Category 15' 시트\n② 공급망 Scope3 통합 시트 포맷 — 'Scope3' 시트에 카테고리별 배출량 표\n③ 매입처 집계 — [카테고리/거래처][비용] 형식, 키워드 자동 분류" 
         };
       }
       
@@ -1294,8 +1288,8 @@ function Scope3P({ data, set, ud }) {
       {(mode === "yearly" || mode === "monthly") && renderYearly()}
       {mode === "excel" && (
         <ExcelUpload
-          hint="SK하이닉스 요청 템플릿이나 업체 회계 자료 그대로 올리세요"
-          expectedFormat={"✅ 지원 포맷:\n① SK하이닉스 공식 템플릿: Category 1~15 시트 각각 자동 인식\n② 이원그린텍 타입: '3. Scope3' 시트에 카테고리별 배출량 표\n③ 매입처 집계: 키워드로 자동 분류 (원재료→Cat.1, 설비→Cat.2, 운송→Cat.4, 폐기→Cat.5, 출장→Cat.6)"}
+          hint="고객사 요청 템플릿이나 회계 자료 그대로 올리세요"
+          expectedFormat={"✅ 지원 포맷:\n① 카테고리별 시트 분리 포맷 — 'Category 1' ~ 'Category 15' 시트가 각각 있는 엑셀, 각 시트의 비용 기반 산정 섹션 자동 추출\n② 공급망 Scope3 통합 시트 포맷 — 'Scope3' 시트에 카테고리 1~15가 세로로 나열된 표\n③ 매입처 집계 — 키워드로 자동 분류 (원재료→Cat.1, 설비→Cat.2, 운송→Cat.4, 폐기→Cat.5, 출장→Cat.6)"}
           onParse={parseExcel}
         />
       )}
