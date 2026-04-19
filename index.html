@@ -648,10 +648,9 @@ function Scope1P({ data, set, ud }) {
   const parseExcel = (wb) => {
     try {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // 포맷 자동 감지 (3가지 실전 포맷 + 템플릿)
+      // 포맷 자동 감지 + 3년치(연도별) 자동 분리 추출
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       
-      // 연료명 매칭 유틸
       const matchFuel = (name) => {
         if (!name) return null;
         const n = String(name).toUpperCase();
@@ -672,82 +671,87 @@ function Scope1P({ data, set, ud }) {
         return (fuel.units || []).find(opt => u.includes(opt.key) || opt.key.includes(u)) || fuel.units?.[0];
       };
 
+      // parsed: [{ fuelId, fuelName, unit, byYear: { 2023: x, 2024: y } }]
       const parsed = [];
       let formatDetected = "unknown";
       
-      // ━━━ 포맷 A: 월별 시계열 인벤토리 툴 (세로 월별 × 가로 연료) ━━━
-      // 특징: "활동도 입력" 시트, R5 연료명, R9 단위, R10~ 월별 데이터, 연도별 합계 행
+      const mergeFuel = (fuelId, fuelName, year, val, unit) => {
+        let entry = parsed.find(p => p.fuelId === fuelId);
+        if (!entry) {
+          entry = { fuelId, fuelName, unit, byYear: {} };
+          parsed.push(entry);
+        }
+        entry.byYear[year] = (entry.byYear[year] || 0) + val;
+        if (!entry.unit && unit) entry.unit = unit;
+      };
+      
+      // ━━━ 포맷 A: 정부 보급 인벤토리 툴 ('1 활동도 입력' 시트) ━━━
+      // 구조: R5[c]="연료명" · R5[c+1]=실제연료명 · R8[c]="사용량" · R9[c]=단위
+      //       연도 합계 행은 B열(인덱스1)에 연도 숫자만
+      //       짝수 칼럼=사용량, 홀수 칼럼=사용금액(스킵)
       const sheetA = wb.SheetNames.find(n => n.includes("활동도") || n.includes("1 활동"));
       if (sheetA) {
         const ws = wb.Sheets[sheetA];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
         
-        // 유효 데이터 있는 가장 최근 연도 찾기
-        const currentYear = new Date().getFullYear();
-        const candidateRows = [];
-        for (let i = 15; i < Math.min(150, rows.length); i++) {
-          const r = rows[i] || [];
-          const v = r[1];
+        // 연도 합계 행 전부 수집
+        const yearRows = {};
+        for (let i = 0; i < rows.length; i++) {
+          const v = rows[i]?.[1];
           const yr = parseInt(v);
-          if (!isNaN(yr) && yr >= 2020 && yr <= currentYear + 1 && String(v).trim() === String(yr)) {
-            let hasData = false;
-            const unitRow = rows[8] || [];
-            for (let c = 2; c < r.length; c++) {
-              const val = parseFloat(r[c]);
-              const unit = String(unitRow[c] || "");
-              if (val > 0 && unit !== "원" && unit !== "천원") { hasData = true; break; }
-            }
-            if (hasData) candidateRows.push({ row: i, year: yr });
+          if (!isNaN(yr) && yr >= 2020 && yr <= 2030 && String(v).trim() === String(yr)) {
+            yearRows[yr] = i;
           }
         }
         
-        const annualRow = candidateRows.length > 0 
-          ? candidateRows.reduce((max, c) => c.year > max.year ? c : max).row 
-          : -1;
-        
-        if (annualRow > 0) {
-          formatDetected = "월별 시계열 인벤토리 포맷";
-          const fuelNameRow = rows[4] || [];
-          const unitRow = rows[8] || [];
-          const valRow = rows[annualRow] || [];
+        if (Object.keys(yearRows).length > 0) {
+          const r5 = rows[4] || [];
+          const r9 = rows[8] || [];
           
-          for (let c = 2; c < valRow.length; c++) {
-            const fuelName = fuelNameRow[c];
-            const unit = unitRow[c];
-            const val = parseFloat(valRow[c]);
-            if (!val || !fuelName) continue;
-            if (unit && (String(unit).includes("원") && !String(unit).includes("Nm"))) continue;
-            if (String(fuelName).includes("전력") || String(fuelName).includes("스팀")) continue;
+          // 보고 대상 연도(REPORT_YEARS)만 추출
+          const targetYears = REPORT_YEARS.filter(y => yearRows[y] !== undefined);
+          
+          if (targetYears.length > 0) {
+            for (let c = 2; c < r5.length; c++) {
+              if (c % 2 !== 0) continue; // 짝수 칼럼만 (사용량)
+              const fuelName = r5[c + 1]; // 옆 홀수 칼럼에 실제 연료명
+              const unit = r9[c];
+              if (!fuelName || String(unit || "").includes("원")) continue;
+              
+              // 연료별 연도별 값 수집
+              const byYear = {};
+              for (const yr of targetYears) {
+                const val = parseFloat(rows[yearRows[yr]]?.[c]);
+                if (val > 0) byYear[yr] = val;
+              }
+              if (Object.keys(byYear).length === 0) continue;
+              
+              // 전력·스팀은 Scope 2 담당 → Scope 1 파서에서 스킵
+              if (String(fuelName).includes("전력") || String(fuelName).includes("스팀")) continue;
+              
+              const fuel = matchFuel(fuelName);
+              if (!fuel) continue;
+              const matchedUnit = matchUnit(fuel, unit);
+              for (const [yr, v] of Object.entries(byYear)) {
+                mergeFuel(fuel.id, fuel.name, parseInt(yr), v, matchedUnit?.key || fuel.baseUnit);
+              }
+            }
             
-            const fuel = matchFuel(fuelName);
-            if (!fuel) continue;
-            
-            const matchedUnit = matchUnit(fuel, unit);
-            const existing = parsed.find(p => p.fuelId === fuel.id);
-            if (existing) {
-              existing.amount += val;
-            } else {
-              parsed.push({ 
-                fuelId: fuel.id, 
-                fuelName: fuel.name, 
-                amount: val, 
-                unit: matchedUnit?.key || fuel.baseUnit,
-                source: `${String(rows[annualRow][1])}년 합계`
-              });
+            if (parsed.length > 0) {
+              formatDetected = "정부 인벤토리 툴 포맷 (3년치 자동 추출)";
             }
           }
         }
       }
       
-      // ━━━ 포맷 B: 공급망 가치사슬 관리 툴 (사업장·시설별 행 나열) ━━━
-      // 특징: "Scope1&2" 시트, 헤더 "사업장 | 시설 | 연료명 | 활동자료 | 단위"
+      // ━━━ 포맷 B: 공급망 가치사슬 관리 툴 ━━━
       if (parsed.length === 0) {
         const sheetB = wb.SheetNames.find(n => n.includes("Scope1") || n.includes("Scope 1") || n.includes("Scope1&2"));
         if (sheetB) {
           const ws = wb.Sheets[sheetB];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
           
-          let hdrRow = -1, fuelCol = -1, amtCol = -1, unitCol = -1, facCol = -1;
+          let hdrRow = -1, fuelCol = -1, amtCol = -1, unitCol = -1, facCol = -1, yearCol = -1;
           for (let i = 0; i < Math.min(15, rows.length); i++) {
             const r = rows[i] || [];
             for (let j = 0; j < r.length; j++) {
@@ -756,6 +760,7 @@ function Scope1P({ data, set, ud }) {
               if (cell === "활동자료" || cell === "사용량") amtCol = j;
               if (cell === "단위") unitCol = j;
               if (cell === "배출시설" || cell === "시설") facCol = j;
+              if (cell === "연도" || cell === "기준년도" || cell.match(/^20\d\d년?$/)) yearCol = j;
             }
             if (fuelCol >= 0 && amtCol >= 0) break;
           }
@@ -774,30 +779,29 @@ function Scope1P({ data, set, ud }) {
               if (!fuel) continue;
               const matchedUnit = matchUnit(fuel, r[unitCol]);
               
-              const existing = parsed.find(p => p.fuelId === fuel.id);
-              if (existing) {
-                existing.amount += val;
-              } else {
-                parsed.push({
-                  fuelId: fuel.id,
-                  fuelName: fuel.name,
-                  amount: val,
-                  unit: matchedUnit?.key || fuel.baseUnit
-                });
+              // 연도 칼럼 있으면 그 연도, 없으면 최신 연도
+              let year = YEAR_LATEST;
+              if (yearCol >= 0) {
+                const y = parseInt(r[yearCol]);
+                if (!isNaN(y) && y >= 2020) year = y;
               }
+              mergeFuel(fuel.id, fuel.name, year, val, matchedUnit?.key || fuel.baseUnit);
             }
           }
         }
       }
       
-      // ━━━ 포맷 C: 우리 템플릿 / 범용 ━━━
+      // ━━━ 포맷 C: 범용 (연료·사용량·단위 헤더 + 연도 옵션) ━━━
       if (parsed.length === 0) {
         const sheetName = wb.SheetNames[0];
         const sheet = wb.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
         
         let headerRow = -1;
-        let fuelCol = -1, amountCol = -1, unitCol = -1;
+        let fuelCol = -1, amountCol = -1, unitCol = -1, yearCol = -1;
+        // 연도별 칼럼 (2023, 2024, 2025) 찾기
+        const yearColMap = {};
+        
         for (let i = 0; i < Math.min(10, rows.length); i++) {
           const row = rows[i] || [];
           for (let j = 0; j < row.length; j++) {
@@ -805,47 +809,101 @@ function Scope1P({ data, set, ud }) {
             if (cell.includes("연료") || cell.includes("품목")) { fuelCol = j; headerRow = i; }
             if (cell.includes("사용") || cell.includes("소비") || cell.includes("수량") || cell === "량") amountCol = j;
             if (cell.includes("단위")) unitCol = j;
+            if (cell === "연도" || cell === "기준년도") yearCol = j;
+            // 연도가 직접 헤더인 경우 (2023, 2024년 등)
+            const ym = cell.match(/^(20\d\d)년?$/);
+            if (ym) {
+              const y = parseInt(ym[1]);
+              if (REPORT_YEARS.includes(y)) {
+                yearColMap[y] = j;
+                if (headerRow < 0) headerRow = i;
+                if (fuelCol < 0 && j > 0) fuelCol = 0; // 맨 앞 칼럼이 연료명일 것
+              }
+            }
           }
-          if (headerRow >= 0 && amountCol >= 0) break;
+          if (headerRow >= 0 && (amountCol >= 0 || Object.keys(yearColMap).length > 0)) break;
         }
         
-        if (headerRow >= 0 && amountCol >= 0) {
-          formatDetected = "범용 템플릿";
-          for (let i = headerRow + 1; i < rows.length; i++) {
-            const row = rows[i] || [];
-            const name = String(row[fuelCol] || "").trim();
-            const amt = parseFloat(row[amountCol]);
-            if (!name || !amt) continue;
-            const fuel = matchFuel(name);
-            if (!fuel) continue;
-            const unitStr = unitCol >= 0 ? String(row[unitCol] || "").trim() : fuel.baseUnit;
-            const matchedUnit = matchUnit(fuel, unitStr);
-            parsed.push({ 
-              fuelId: fuel.id, 
-              fuelName: fuel.name, 
-              amount: amt, 
-              unit: matchedUnit?.key || fuel.baseUnit 
-            });
+        if (headerRow >= 0) {
+          // 연도별 가로 배치: A=연료, B=2023, C=2024, D=2025, 단위
+          if (Object.keys(yearColMap).length > 0 && fuelCol >= 0) {
+            formatDetected = "범용 포맷 (연도 칼럼 가로 배치)";
+            for (let i = headerRow + 1; i < rows.length; i++) {
+              const row = rows[i] || [];
+              const name = String(row[fuelCol] || "").trim();
+              if (!name) continue;
+              const fuel = matchFuel(name);
+              if (!fuel) continue;
+              const unitStr = unitCol >= 0 ? String(row[unitCol] || "").trim() : fuel.baseUnit;
+              const matchedUnit = matchUnit(fuel, unitStr);
+              
+              for (const [yr, col] of Object.entries(yearColMap)) {
+                const v = parseFloat(row[col]);
+                if (v > 0) mergeFuel(fuel.id, fuel.name, parseInt(yr), v, matchedUnit?.key || fuel.baseUnit);
+              }
+            }
+          }
+          // 단일 연도 (연도 칼럼 세로 또는 없음)
+          else if (amountCol >= 0) {
+            formatDetected = "범용 포맷 (단일 연도)";
+            for (let i = headerRow + 1; i < rows.length; i++) {
+              const row = rows[i] || [];
+              const name = String(row[fuelCol] || "").trim();
+              const amt = parseFloat(row[amountCol]);
+              if (!name || !amt) continue;
+              const fuel = matchFuel(name);
+              if (!fuel) continue;
+              const unitStr = unitCol >= 0 ? String(row[unitCol] || "").trim() : fuel.baseUnit;
+              const matchedUnit = matchUnit(fuel, unitStr);
+              
+              let year = YEAR_LATEST;
+              if (yearCol >= 0) {
+                const y = parseInt(row[yearCol]);
+                if (!isNaN(y) && y >= 2020) year = y;
+              }
+              mergeFuel(fuel.id, fuel.name, year, amt, matchedUnit?.key || fuel.baseUnit);
+            }
           }
         }
       }
       
       if (parsed.length === 0) {
         return { 
-          error: "인식 가능한 연료 데이터가 없습니다.\n\n지원 포맷:\n① 월별 시계열 인벤토리 포맷 ('활동도 입력' 시트, 연도별 합계 행)\n② 공급망 가치사슬 관리 툴 포맷 (사업장·시설별 행 나열)\n③ 범용 포맷 ([연료] [사용량] [단위] 헤더)" 
+          error: "인식 가능한 연료 데이터가 없습니다.\n\n지원 포맷:\n① 정부 인벤토리 툴 포맷 ('1 활동도 입력' 시트, 연도별 합계 행 자동 추출)\n② 공급망 가치사슬 관리 툴 포맷\n③ 범용 포맷 ([연료] [2023] [2024] [단위] 등)\n\n💡 엑셀 구조가 많이 다르면 수동 매핑 UI로 해결 예정 (v12)" 
         };
       }
       
+      // 미리보기 문자열 생성
+      const previewLines = parsed.map(p => {
+        const yearStr = REPORT_YEARS.map(y => {
+          const v = p.byYear[y];
+          return v ? `${y}: ${v.toLocaleString(undefined,{maximumFractionDigits:2})}` : `${y}: -`;
+        }).join(" · ");
+        return `• ${p.fuelName} (${p.unit}) — ${yearStr}`;
+      }).join("\n");
+      
+      const yearSet = new Set();
+      parsed.forEach(p => Object.keys(p.byYear).forEach(y => yearSet.add(y)));
+      const extractedYears = [...yearSet].sort();
+      
       return {
-        message: `✅ ${formatDetected} 인식 완료 (${parsed.length}개 연료)`,
-        preview: parsed.map(p => {
-          const baseUnit = [...SF, ...MF].find(f => f.id === p.fuelId)?.baseUnit;
-          return `• ${p.fuelName}: ${p.amount.toLocaleString(undefined, {maximumFractionDigits: 2})} ${p.unit}${p.source ? ` [${p.source}]` : ""}`;
-        }).join("\n"),
+        message: `✅ ${formatDetected}\n연료 ${parsed.length}개 · 연도 ${extractedYears.length}개 (${extractedYears.join(", ")})`,
+        preview: previewLines,
         apply: () => {
           parsed.forEach(p => {
-            set(p.fuelId, p.amount);
+            // 단위 저장
             set(p.fuelId + "_unit", p.unit);
+            // 연도별 값 저장 (기존 값 병합)
+            const current = data[p.fuelId];
+            let yearObj = (typeof current === "object" && current !== null) ? { ...current } : {};
+            for (const [yr, v] of Object.entries(p.byYear)) {
+              yearObj[yr] = v;
+            }
+            // 단일 숫자로 저장된 기존 값 보존 (최신 연도로)
+            if (typeof current === "number" && !yearObj[YEAR_LATEST]) {
+              yearObj[YEAR_LATEST] = current;
+            }
+            set(p.fuelId, yearObj);
           });
         }
       };
@@ -1012,56 +1070,65 @@ function Scope2P({ data, set, ud }) {
 
   const parseExcel = (wb) => {
     try {
-      // ━━━ 포맷 A: 월별 시계열 인벤토리 툴 (전력 칼럼 자동 추출) ━━━
+      // ━━━ 포맷 A: 정부 인벤토리 툴 (3년치 전력 자동 추출) ━━━
       const sheetA = wb.SheetNames.find(n => n.includes("활동도") || n.includes("1 활동"));
       if (sheetA) {
         const ws = wb.Sheets[sheetA];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
         
-        // 유효 데이터 있는 가장 최근 연도 찾기
-        const currentYear = new Date().getFullYear();
-        const candidateRows = [];
-        for (let i = 15; i < Math.min(150, rows.length); i++) {
-          const r = rows[i] || [];
-          const yr = parseInt(r[1]);
-          if (!isNaN(yr) && yr >= 2020 && yr <= currentYear + 1 && String(r[1]).trim() === String(yr)) {
-            let hasData = false;
-            const unitRow = rows[8] || [];
-            for (let c = 2; c < r.length; c++) {
-              const val = parseFloat(r[c]);
-              const unit = String(unitRow[c] || "");
-              if (val > 0 && unit !== "원" && unit !== "천원") { hasData = true; break; }
-            }
-            if (hasData) candidateRows.push({ row: i, year: yr });
+        // 연도 합계 행 전부 찾기
+        const yearRows = {};
+        for (let i = 0; i < rows.length; i++) {
+          const v = rows[i]?.[1];
+          const yr = parseInt(v);
+          if (!isNaN(yr) && yr >= 2020 && yr <= 2030 && String(v).trim() === String(yr)) {
+            yearRows[yr] = i;
           }
         }
         
-        const annualRow = candidateRows.length > 0 
-          ? candidateRows.reduce((max, c) => c.year > max.year ? c : max).row 
-          : -1;
+        const targetYears = REPORT_YEARS.filter(y => yearRows[y] !== undefined);
         
-        if (annualRow > 0) {
-          const fuelNameRow = rows[4] || [];
-          const unitRow = rows[8] || [];
-          const valRow = rows[annualRow] || [];
+        if (targetYears.length > 0) {
+          const r5 = rows[4] || [];
+          const r9 = rows[8] || [];
           
-          let totalKwh = 0;
-          for (let c = 2; c < valRow.length; c++) {
-            const fuelName = String(fuelNameRow[c] || "");
-            const unit = String(unitRow[c] || "");
-            const val = parseFloat(valRow[c]);
-            if (!val) continue;
-            if (fuelName.includes("전력") && unit === "kWh") {
-              totalKwh += val;
+          // 연도별 전력 총계
+          const electricByYear = {};
+          for (let c = 2; c < r5.length; c++) {
+            if (c % 2 !== 0) continue; // 짝수 칼럼 (사용량)
+            const fuelName = r5[c + 1]; // 옆 칼럼에 연료명
+            const unit = r9[c];
+            if (!fuelName || !String(fuelName).includes("전력")) continue;
+            if (!String(unit).includes("kWh") && !String(unit).includes("MWh")) continue;
+            
+            for (const yr of targetYears) {
+              const val = parseFloat(rows[yearRows[yr]]?.[c]);
+              if (val > 0) {
+                const kwh = String(unit).includes("MWh") ? val * 1000 : val;
+                electricByYear[yr] = (electricByYear[yr] || 0) + kwh;
+              }
             }
           }
           
-          if (totalKwh > 0) {
+          if (Object.keys(electricByYear).length > 0) {
+            const extractedYears = Object.keys(electricByYear).sort();
+            const previewLines = REPORT_YEARS.map(y => {
+              const v = electricByYear[y];
+              if (!v) return `${y}년: 데이터 없음`;
+              return `${y}년: ${v.toLocaleString()} kWh = ${(v/1000).toFixed(2)} MWh = ${(v/1000 * EFS2).toFixed(2)} tCO₂eq`;
+            }).join("\n");
+            
             return {
-              message: `✅ 월별 시계열 인벤토리 포맷 인식 완료 (${String(rows[annualRow][1])}년)`,
-              preview: `연간 전력 사용량: ${totalKwh.toLocaleString()} kWh\n= ${(totalKwh/1000).toFixed(2)} MWh\n= ${(totalKwh/1000 * EFS2).toFixed(2)} tCO₂eq (배출계수 ${EFS2})`,
+              message: `✅ 정부 인벤토리 툴 포맷 (3년치 자동 추출)\n전력 데이터 ${extractedYears.length}개 연도 (${extractedYears.join(", ")})`,
+              preview: previewLines,
               apply: () => {
-                set("yearly_val", totalKwh);
+                // 연도별 저장: yearly_val_{year} 구조로
+                for (const [yr, v] of Object.entries(electricByYear)) {
+                  set("yearly_val_" + yr, v);
+                }
+                // 호환: 최신 연도 값을 yearly_val 에도 저장
+                const latestV = electricByYear[YEAR_LATEST] || electricByYear[REPORT_YEARS[1]] || electricByYear[REPORT_YEARS[0]];
+                if (latestV) set("yearly_val", latestV);
                 set("input_type", "kWh");
                 setMode("yearly");
               }
