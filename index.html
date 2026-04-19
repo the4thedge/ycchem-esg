@@ -3592,7 +3592,7 @@ function GRI102AdvancedPanel({ disclosureCode, blockData, setBlockData, disabled
 }
 
 
-function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS1, setS2, setS3, ud, isAdmin, griMap, vsmeMap }) {
+function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS1, setS2, setS3, ud, isAdmin, griMap, vsmeMap, subPage }) {
   const [exOpen, setExOpen] = useState({});
   const [otherOpen, setOtherOpen] = useState(false);
   const ce = d => ud === "all" || ud === d;
@@ -3732,6 +3732,91 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
     );
   };
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // GRI 102 서브페이지 렌더링 (subPage에 따라 다른 내용)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (standard.code === "102") {
+    const scopeBlocks = blocks.filter(b => isScope(b));
+    const s1Block = scopeBlocks.find(b => b.input_type === 'scope1_table');
+    const s2Block = scopeBlocks.find(b => b.input_type === 'scope2_table');
+    const s3Block = scopeBlocks.find(b => b.input_type === 'scope3_table');
+    
+    const renderHeader = (icon, subtitle) => (
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: T.g400 }}>{standard.category}</span>
+          <span style={{ color: T.g300 }}>·</span>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>{icon} {standard.title}</h2>
+        </div>
+        <p style={{ fontSize: 14, color: T.g500 }}>{subtitle}</p>
+      </div>
+    );
+    
+    // 배출량 페이지 (최상단 · 기본)
+    if (subPage === "emissions" || !subPage) {
+      return (
+        <div>
+          {renderHeader("📊", "Scope 1 · 2 · 3 배출량 입력 — 활동량을 입력하면 최신 배출계수로 tCO₂eq 자동 계산")}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {s1Block && renderBlock(s1Block, true)}
+            {s2Block && renderBlock(s2Block, true)}
+            {s3Block && renderBlock(s3Block, true)}
+          </div>
+        </div>
+      );
+    }
+    
+    // 대시보드 페이지
+    if (subPage === "dashboard") {
+      return (
+        <div>
+          {renderHeader("📈", "실시간 배출량 그래프 · 감축 목표 진척률 · 3년 추세")}
+          <ClimateGraphs scopeData={scopeData} blockData={blockData}/>
+        </div>
+      );
+    }
+    
+    // 서술 공시 페이지 (각 공시별)
+    const disclosureMap = {
+      "transition": { code: "102-1", icon: "📝", title: "전환계획", subtitle: "파리협정 1.5°C 부합 전환계획 수립 — GRI 102-1", dept: ["env", "mgmt"] },
+      "adaptation": { code: "102-2", icon: "🌊", title: "적응계획", subtitle: "기후변화 물리적 리스크 대응 계획 — GRI 102-2", dept: ["env", "fac"] },
+      "just": { code: "102-3", icon: "👥", title: "공정한 전환", subtitle: "직원·지역사회 영향 관리 — GRI 102-3", dept: ["mgmt", "admin"] },
+      "target": { code: "102-4", icon: "🎯", title: "감축 목표", subtitle: "단기·중기·장기 감축 목표 설정 — GRI 102-4", dept: ["env"] },
+      "removal": { code: "102-9", icon: "🌳", title: "가치사슬 제거", subtitle: "가치사슬 내 탄소 제거 활동 — GRI 102-9", dept: ["env"] },
+      "credit": { code: "102-10", icon: "💳", title: "탄소 크레딧", subtitle: "탄소 크레딧 구매·사용 정책 — GRI 102-10", dept: ["mgmt"] },
+    };
+    
+    const discl = disclosureMap[subPage];
+    if (discl) {
+      const isUserDisabled = !isAdmin && !discl.dept.some(d => ce(d));
+      return (
+        <div>
+          {renderHeader(discl.icon, discl.subtitle)}
+          <GRI102AdvancedPanel 
+            disclosureCode={discl.code} 
+            blockData={blockData} 
+            setBlockData={setBlockData} 
+            disabled={isUserDisabled}/>
+        </div>
+      );
+    }
+    
+    // 기본값: 배출량으로
+    return (
+      <div>
+        {renderHeader("📊", "Scope 1 · 2 · 3 배출량 입력")}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {s1Block && renderBlock(s1Block, true)}
+          {s2Block && renderBlock(s2Block, true)}
+          {s3Block && renderBlock(s3Block, true)}
+        </div>
+      </div>
+    );
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 그 외 GRI 표준 (기존 로직 유지)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -3743,41 +3828,12 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
         <p style={{ fontSize: 14, color: T.g500 }}>{standard.description}</p>
       </div>
 
-      {/* 🌡️ GRI 102일 때 그래프 대시보드 표시 */}
-      {standard.code === "102" && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.blue, padding: "3px 8px", borderRadius: 4 }}>📊 실시간</span>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: T.g800 }}>기후변화 대응 현황</h3>
-            <span style={{ fontSize: 11, color: T.g400 }}>Scope 데이터 입력 시 자동 업데이트</span>
-          </div>
-          <ClimateGraphs scopeData={scopeData} blockData={blockData}/>
-        </div>
-      )}
-
       {ud !== "all" && myBlocks.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 12, fontWeight: 600, color: T.g500, marginBottom: 12, letterSpacing: "0.04em" }}>내 담당 항목 ({myBlocks.length})</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {myBlocks.map(b => renderBlock(b, true))}
           </div>
-        </div>
-      )}
-
-      {/* 🌡️ GRI 102일 때 서술 공시 sub-block 패널 7개 */}
-      {standard.code === "102" && (
-        <div style={{ marginTop: 32 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.violet, padding: "3px 8px", borderRadius: 4 }}>📝 서술 공시</span>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: T.g800 }}>전환계획·적응계획·공정전환 등</h3>
-            <span style={{ fontSize: 11, color: T.g400 }}>GRI 102-1 ~ 102-4, 102-9, 102-10</span>
-          </div>
-          <GRI102AdvancedPanel disclosureCode="102-1" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env") && !ce("mgmt")}/>
-          <GRI102AdvancedPanel disclosureCode="102-2" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env") && !ce("fac")}/>
-          <GRI102AdvancedPanel disclosureCode="102-3" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("mgmt") && !ce("admin")}/>
-          <GRI102AdvancedPanel disclosureCode="102-4" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env")}/>
-          <GRI102AdvancedPanel disclosureCode="102-9" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("env")}/>
-          <GRI102AdvancedPanel disclosureCode="102-10" blockData={blockData} setBlockData={setBlockData} disabled={!isAdmin && !ce("mgmt")}/>
         </div>
       )}
 
@@ -4421,13 +4477,73 @@ function App() {
           </button>
 
           <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>GRI 표준</p>
-          {standards.map(s => (
-            <button key={s.code} onClick={() => setPg("gri_" + s.code)}
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "gri_" + s.code ? T.g100 : "transparent", color: pg === "gri_" + s.code ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "gri_" + s.code ? 600 : 400, textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-              <span>{s.title.replace("GRI " + s.code + ": ", "").replace(/ 202\d/, "").replace(/ 201\d/, "")}</span>
-              <span style={{ fontSize: 11, color: T.g400 }}>{s.code}</span>
-            </button>
-          ))}
+          {standards.map(s => {
+            const isActive = pg === "gri_" + s.code || pg.startsWith("gri_" + s.code + "_");
+            const isExpanded = s.code === "102" && isActive;
+            
+            // GRI 102만 서브메뉴 확장
+            if (s.code === "102") {
+              const subItems = [
+                { key: "emissions", icon: "📊", label: "배출량 (Scope 1/2/3)", badge: "우선" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
+                { key: "transition", icon: "📝", label: "전환계획", code: "102-1" },
+                { key: "target", icon: "🎯", label: "감축 목표", code: "102-4" },
+                { key: "adaptation", icon: "🌊", label: "적응계획", code: "102-2" },
+                { key: "just", icon: "👥", label: "공정한 전환", code: "102-3" },
+                { key: "removal", icon: "🌳", label: "가치사슬 제거", code: "102-9" },
+                { key: "credit", icon: "💳", label: "탄소 크레딧", code: "102-10" },
+              ];
+              return (
+                <div key={s.code}>
+                  <button onClick={() => setPg("gri_102_emissions")}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", 
+                      background: isActive ? T.g100 : "transparent", 
+                      color: isActive ? T.g900 : T.g600, 
+                      fontSize: 13, fontWeight: isActive ? 700 : 500, 
+                      textAlign: "left", cursor: "pointer", 
+                      display: "flex", justifyContent: "space-between", alignItems: "center", 
+                      marginBottom: 2 }}>
+                    <span>{s.title.replace("GRI " + s.code + ": ", "").replace(/ 202\d/, "").replace(/ 201\d/, "")}</span>
+                    <span style={{ fontSize: 10, color: T.g400 }}>{s.code}</span>
+                  </button>
+                  {isExpanded && (
+                    <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.g200}`, marginBottom: 6 }}>
+                      {subItems.map(sub => {
+                        const subPgKey = "gri_102_" + sub.key;
+                        const isSubActive = pg === subPgKey;
+                        return (
+                          <button key={sub.key} onClick={() => setPg(subPgKey)}
+                            style={{ width: "100%", padding: "6px 10px", borderRadius: 4, border: "none",
+                              background: isSubActive ? T.emeraldBg : "transparent",
+                              color: isSubActive ? T.emerald : T.g500,
+                              fontSize: 12, fontWeight: isSubActive ? 700 : 400,
+                              textAlign: "left", cursor: "pointer",
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                              marginBottom: 1 }}>
+                            <span>
+                              <span style={{ marginRight: 4, fontSize: 11 }}>{sub.icon}</span>
+                              {sub.label}
+                            </span>
+                            {sub.badge && <span style={{ fontSize: 9, background: T.rose, color: T.white, padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>{sub.badge}</span>}
+                            {sub.code && <span style={{ fontSize: 9, color: T.g400 }}>{sub.code}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            
+            // 그 외 GRI 표준 (단일 메뉴)
+            return (
+              <button key={s.code} onClick={() => setPg("gri_" + s.code)}
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "gri_" + s.code ? T.g100 : "transparent", color: pg === "gri_" + s.code ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "gri_" + s.code ? 600 : 400, textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                <span>{s.title.replace("GRI " + s.code + ": ", "").replace(/ 202\d/, "").replace(/ 201\d/, "")}</span>
+                <span style={{ fontSize: 11, color: T.g400 }}>{s.code}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.g100}` }}>
@@ -4449,6 +4565,16 @@ function App() {
         {pg === "dash" && <Dash scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards}/>}
         {pg === "report" && <ReportPreview scopeData={scopeData} blockData={blockData}/>}
         {standards.map(s => {
+          // GRI 102 서브페이지 매칭
+          if (s.code === "102" && pg.startsWith("gri_102_")) {
+            const subPage = pg.replace("gri_102_", "");
+            const sBlocks = blocks.filter(b => b.gri_code === s.code);
+            return <BlockPanel key={s.code + "_" + subPage} standard={s} blocks={sBlocks} blockData={blockData} setBlockData={setBlockData}
+              scopeData={scopeData} setS1={setS1} setS2={setS2} setS3={setS3}
+              ud={user.dept} isAdmin={user.dept === "all"} griMap={griMap} vsmeMap={vsmeMap}
+              subPage={subPage}/>;
+          }
+          // 그 외 GRI 표준
           if (pg !== "gri_" + s.code) return null;
           const sBlocks = blocks.filter(b => b.gri_code === s.code);
           return <BlockPanel key={s.code} standard={s} blocks={sBlocks} blockData={blockData} setBlockData={setBlockData}
