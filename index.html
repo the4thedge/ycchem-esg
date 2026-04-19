@@ -720,10 +720,27 @@ function Scope1P({ data, set, ud }) {
               
               // 연료별 연도별 값 수집
               const byYear = {};
+              // 월별 데이터: byYearMonthly[year] = [12개월 배열]
+              const byYearMonthly = {};
+              
               for (const yr of targetYears) {
-                const val = parseFloat(rows[yearRows[yr]]?.[c]);
+                const yrRow = yearRows[yr];
+                const val = parseFloat(rows[yrRow]?.[c]);
                 if (val > 0) byYear[yr] = val;
+                
+                // 월별 = 연도 합계 행 위쪽 12개 행
+                const monthlyArr = [];
+                let hasMonthly = false;
+                for (let m = 0; m < 12; m++) {
+                  const rowIdx = yrRow - 12 + m;
+                  if (rowIdx < 0) break;
+                  const mVal = parseFloat(rows[rowIdx]?.[c]);
+                  monthlyArr.push(mVal > 0 ? mVal : 0);
+                  if (mVal > 0) hasMonthly = true;
+                }
+                if (hasMonthly) byYearMonthly[yr] = monthlyArr;
               }
+              
               if (Object.keys(byYear).length === 0) continue;
               
               // 전력·스팀은 Scope 2 담당 → Scope 1 파서에서 스킵
@@ -732,13 +749,25 @@ function Scope1P({ data, set, ud }) {
               const fuel = matchFuel(fuelName);
               if (!fuel) continue;
               const matchedUnit = matchUnit(fuel, unit);
+              
+              let entry = parsed.find(p => p.fuelId === fuel.id);
+              if (!entry) {
+                entry = { fuelId: fuel.id, fuelName: fuel.name, unit: matchedUnit?.key || fuel.baseUnit, byYear: {}, byYearMonthly: {} };
+                parsed.push(entry);
+              }
               for (const [yr, v] of Object.entries(byYear)) {
-                mergeFuel(fuel.id, fuel.name, parseInt(yr), v, matchedUnit?.key || fuel.baseUnit);
+                entry.byYear[yr] = (entry.byYear[yr] || 0) + v;
+              }
+              for (const [yr, arr] of Object.entries(byYearMonthly)) {
+                if (!entry.byYearMonthly[yr]) entry.byYearMonthly[yr] = new Array(12).fill(0);
+                for (let m = 0; m < 12; m++) {
+                  entry.byYearMonthly[yr][m] += arr[m] || 0;
+                }
               }
             }
             
             if (parsed.length > 0) {
-              formatDetected = "정부 인벤토리 툴 포맷 (3년치 자동 추출)";
+              formatDetected = "정부 인벤토리 툴 포맷 (3년치 + 월별 자동 추출)";
             }
           }
         }
@@ -904,6 +933,22 @@ function Scope1P({ data, set, ud }) {
               yearObj[YEAR_LATEST] = current;
             }
             set(p.fuelId, yearObj);
+            
+            // 월별 데이터 저장 (연도별 객체 구조)
+            if (p.byYearMonthly && Object.keys(p.byYearMonthly).length > 0) {
+              const monthlyKey = "_monthly_" + p.fuelId;
+              const currentMonthly = data[monthlyKey];
+              let monthlyObj = {};
+              if (Array.isArray(currentMonthly)) {
+                monthlyObj[YEAR_LATEST] = currentMonthly; // 기존 배열은 최신 연도로
+              } else if (typeof currentMonthly === "object" && currentMonthly !== null) {
+                monthlyObj = { ...currentMonthly };
+              }
+              for (const [yr, arr] of Object.entries(p.byYearMonthly)) {
+                monthlyObj[yr] = arr;
+              }
+              set(monthlyKey, monthlyObj);
+            }
           });
         }
       };
@@ -959,89 +1004,202 @@ function Scope2P({ data, set, ud }) {
   };
 
   const renderYearly = () => {
-    const val = data.yearly_val || "";
-    const kwh = getKwhFromValue(val);
-    const mwh = kwh / 1000;
-    const co2 = mwh * EFS2;
-    const highlight = ce && ud !== "all" && !val;
+    // 3년치 입력 (기존 yearly_val 호환: 최신 연도로 매핑)
+    const getYearVal = (y) => {
+      if (y === YEAR_LATEST && data.yearly_val && !data["yearly_val_" + y]) {
+        return data.yearly_val; // 호환: 기존 단일 연도 값
+      }
+      return data["yearly_val_" + y] || "";
+    };
+    
+    // 연도별 환산
+    const yearCalc = REPORT_YEARS.map(y => {
+      const val = getYearVal(y);
+      const kwh = getKwhFromValue(val);
+      return { year: y, val, kwh, mwh: kwh / 1000, co2: (kwh / 1000) * EFS2 };
+    });
+    
+    // 3년 합계
+    const totalKwh = yearCalc.reduce((s, e) => s + e.kwh, 0);
+    const totalCo2 = yearCalc.reduce((s, e) => s + e.co2, 0);
+    // 전년 대비
+    const [, y2, y3] = yearCalc;
+    const changePct = y2.kwh > 0 ? ((y3.kwh - y2.kwh) / y2.kwh * 100) : null;
     
     return (
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>연간 총 전력 사용량</span>
-          <span style={{ fontSize: 12, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh (2023 최신)</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>📅 3년치 전력 사용량</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueBg, padding: "3px 8px", borderRadius: 4 }}>
+            {REPORT_YEARS[0]} ~ {REPORT_YEARS[2]}
+          </span>
+          <span style={{ fontSize: 12, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh</span>
         </div>
         <p style={{ fontSize: 13, color: T.g500, marginBottom: 14, lineHeight: 1.6 }}>
-          💡 한전 사이버지점 → 연간 사용량 조회 → 12개월 합계를 한 번에 입력하시면 됩니다
+          💡 한전 사이버지점에서 각 연도별 연간 합계를 입력하세요. 엑셀 업로드 시 자동 채워집니다.
         </p>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="number" value={val} disabled={!ce}
-            onChange={e => set("yearly_val", e.target.value)}
-            placeholder={highlight ? "연간 합계 입력 필요" : "1,250,400"}
-            style={{
-              flex: 1, padding: "14px 18px", borderRadius: 10,
-              border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
-              fontSize: 18, fontWeight: 600, textAlign: "right",
-              background: ce ? T.white : T.g50, opacity: ce ? 1 : 0.5
-            }} />
+        
+        {/* 입력 타입 공통 */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+          <span style={{ fontSize: 12, color: T.g500, fontWeight: 500 }}>입력 단위:</span>
           <select value={inputType} disabled={!ce}
             onChange={e => set("input_type", e.target.value)}
             style={{
-              padding: "14px 16px", borderRadius: 10, border: `1px solid ${T.g200}`,
-              background: T.white, fontSize: 15, fontWeight: 500, color: T.g700, cursor: "pointer"
+              padding: "6px 12px", borderRadius: 6, border: `1px solid ${T.g200}`,
+              background: T.white, fontSize: 13, fontWeight: 500, color: T.g700, cursor: "pointer"
             }}>
             <option value="kWh">kWh</option>
             <option value="원">원 (전기요금)</option>
           </select>
+          {inputType === "원" && (
+            <span style={{ fontSize: 11, color: T.g400 }}>💡 산업용 평균 165원/kWh 역산</span>
+          )}
         </div>
-        {inputType === "원" && (
-          <p style={{ fontSize: 11, color: T.g400, marginTop: 6 }}>
-            💡 산업용 평균 단가 165원/kWh로 역산 (2024년 기준)
-          </p>
-        )}
         
-        {kwh > 0 && (
-          <div style={{ marginTop: 16, padding: 16, background: T.g50, borderRadius: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: T.g500 }}>사용량</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T.g800 }}>
-                {kwh.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh · {mwh.toFixed(2)} MWh
-              </span>
+        {/* 3년치 입력 그리드 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+          {yearCalc.map(e => {
+            const isLatest = e.year === YEAR_LATEST;
+            const highlight = ce && ud !== "all" && !e.val && isLatest;
+            return (
+              <div key={e.year} style={{
+                padding: 14,
+                background: isLatest ? T.emeraldBg : T.g50,
+                border: `1px solid ${isLatest ? T.emerald + "44" : T.g200}`,
+                borderRadius: 10
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isLatest ? T.emerald : T.g600, marginBottom: 8 }}>
+                  📆 {e.year}년{isLatest ? " (최신)" : ""}
+                </div>
+                <input type="number" value={e.val} disabled={!ce}
+                  onChange={ev => set("yearly_val_" + e.year, ev.target.value)}
+                  placeholder={highlight ? "입력 필요" : "0"}
+                  style={{
+                    width: "100%", padding: "10px 12px", borderRadius: 8,
+                    border: highlight ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+                    fontSize: 15, fontWeight: 600, textAlign: "right",
+                    background: T.white, opacity: ce ? 1 : 0.5
+                  }} />
+                <div style={{ marginTop: 8, fontSize: 11, color: T.g500, lineHeight: 1.5 }}>
+                  {e.kwh > 0 ? (
+                    <>
+                      <div>{(e.kwh).toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh</div>
+                      <div style={{ fontWeight: 700, color: T.g800 }}>
+                        = {e.co2.toFixed(2)} tCO₂eq
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: T.g400 }}>-</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* 3년 합계 및 증감률 */}
+        {totalKwh > 0 && (
+          <div style={{ padding: 14, background: T.g50, borderRadius: 10, display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 11, color: T.g500, marginBottom: 4 }}>3년 합계</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: T.g900 }}>
+                {totalKwh.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh · {totalCo2.toFixed(2)} tCO₂eq
+              </p>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-              <span style={{ fontSize: 13, color: T.g500 }}>배출량 (Scope 2)</span>
-              <span style={{ fontSize: 18, fontWeight: 700, color: T.g900 }}>
-                {co2.toFixed(2)} tCO₂eq
-              </span>
-            </div>
+            {changePct !== null && (
+              <div style={{
+                padding: "8px 14px",
+                background: changePct < 0 ? T.emeraldBg : T.roseBg,
+                border: `1px solid ${changePct < 0 ? T.emerald : T.rose}`,
+                borderRadius: 8
+              }}>
+                <p style={{ fontSize: 10, color: T.g500, marginBottom: 2 }}>
+                  {REPORT_YEARS[2]} vs {REPORT_YEARS[1]}
+                </p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: changePct < 0 ? T.emerald : T.rose }}>
+                  {changePct < 0 ? "▼" : "▲"} {Math.abs(changePct).toFixed(1)}%
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
     );
   };
 
+  const [s2MonthlyYear, setS2MonthlyYear] = useState(YEAR_LATEST);
+  
   const renderMonthly = () => {
+    // 연도별 월 데이터 getter/setter
+    const getMonthlyArr = (year) => {
+      // 기존 구조: data[0], data[1], ..., data[11] (인덱스 숫자) - 최신 연도로 매핑
+      if (year === YEAR_LATEST && !data["_monthly_" + year]) {
+        const legacy = [];
+        let hasLegacy = false;
+        for (let i = 0; i < 12; i++) {
+          if (data[i]) { legacy[i] = data[i]; hasLegacy = true; }
+        }
+        if (hasLegacy) return legacy;
+      }
+      return data["_monthly_" + year] || [];
+    };
+    
+    const setMonthlyVal = (year, monthIdx, val) => {
+      const arr = [...(getMonthlyArr(year))];
+      arr[monthIdx] = val;
+      set("_monthly_" + year, arr);
+    };
+    
+    const monthly = getMonthlyArr(s2MonthlyYear);
     let total = 0;
+    
+    // 3년 연간합계 미리보기
+    const yearlyPreview = REPORT_YEARS.map(y => {
+      const arr = getMonthlyArr(y);
+      return arr.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+    });
+    
     return (
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>월별 전력 사용량</span>
+          {/* 연도 선택 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: T.blueBg, padding: "4px 10px", borderRadius: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.blue }}>📅 입력 연도</span>
+            <select value={s2MonthlyYear} onChange={e => setS2MonthlyYear(parseInt(e.target.value))}
+              style={{ padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.blue}44`, background: T.white, fontSize: 12, fontWeight: 700, color: T.g800, cursor: "pointer" }}>
+              {REPORT_YEARS.map(y => (
+                <option key={y} value={y}>{y}년{y === YEAR_LATEST ? " (최신)" : ""}</option>
+              ))}
+            </select>
+          </div>
           <span style={{ fontSize: 12, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh</span>
         </div>
+        
+        {/* 3년 연간합계 미리보기 */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 14, padding: "8px 12px", background: T.g50, borderRadius: 6 }}>
+          <span style={{ fontSize: 11, color: T.g500, fontWeight: 500 }}>📊 3년 연간합계:</span>
+          {REPORT_YEARS.map((y, i) => (
+            <span key={y} style={{ fontSize: 11, color: y === s2MonthlyYear ? T.blue : T.g400, fontWeight: y === s2MonthlyYear ? 700 : 500 }}>
+              {y}: {yearlyPreview[i].toLocaleString()} kWh
+            </span>
+          ))}
+        </div>
+        
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
           {[0, 6].map(start => (
             <div key={start}>
               {[...Array(6)].map((_, idx) => {
                 const i = start + idx;
-                const v = data[i] || "";
+                const v = monthly[i] || "";
                 const kwh = parseFloat(v) || 0;
                 total += kwh;
-                const highlight = ce && ud !== "all" && !v;
+                const highlight = ce && ud !== "all" && !v && s2MonthlyYear === YEAR_LATEST;
                 return (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 500, color: T.g500, width: 30 }}>{MO[i]}</span>
                     <input type="number" value={v} disabled={!ce}
-                      onChange={e => set(i, parseFloat(e.target.value) || 0)}
+                      onChange={e => setMonthlyVal(s2MonthlyYear, i, e.target.value)}
                       placeholder={highlight ? "입력" : "0"}
                       style={{
                         flex: 1, padding: "7px 10px", borderRadius: 6,
@@ -1058,7 +1216,7 @@ function Scope2P({ data, set, ud }) {
         </div>
         <div style={{ marginTop: 16, padding: 14, background: T.g50, borderRadius: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 13, color: T.g500 }}>연간 합계</span>
+            <span style={{ fontSize: 13, color: T.g500 }}>{s2MonthlyYear}년 연간 합계</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: T.g900 }}>
               {total.toLocaleString()} kWh · {(total * EFS2 / 1000).toFixed(2)} tCO₂eq
             </span>
@@ -1251,38 +1409,87 @@ function Scope3P({ data, set, ud }) {
   const ce = d => ud === "all" || ud === d;
 
   const renderYearly = () => {
+    // Scope 3 연도별 getter/setter
+    const getS3Year = (cid, year) => {
+      const raw = data[cid];
+      if (typeof raw === "object" && raw !== null) {
+        return parseFloat(raw[year]) || 0;
+      }
+      // 호환: 단일 숫자 = 최신 연도
+      if (year === YEAR_LATEST) return parseFloat(raw) || 0;
+      return 0;
+    };
+    
+    const setS3Year = (cid, year, val) => {
+      const raw = data[cid];
+      let obj = (typeof raw === "object" && raw !== null) 
+        ? { ...raw } 
+        : (parseFloat(raw) > 0 ? { [YEAR_LATEST]: parseFloat(raw) } : {});
+      obj[year] = parseFloat(val) || 0;
+      set(cid, obj);
+    };
+    
     return (
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden" }}>
         <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.g100}`, background: T.g50 }}>
           <p style={{ fontSize: 13, color: T.g600, lineHeight: 1.6 }}>
-            💡 카테고리별 연간 지출 총액을 <strong>백만원 단위</strong>로 입력하세요.
+            💡 카테고리별 연간 지출 총액을 <strong>백만원 단위</strong>로 3개 연도({REPORT_YEARS[0]}·{REPORT_YEARS[1]}·{REPORT_YEARS[2]}) 입력하세요.
             회계 시스템이나 매입처 집계 자료에서 숫자 확인.
           </p>
         </div>
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-          <thead><tr style={{ borderBottom: `1px solid ${T.g200}` }}>
-            {["카테고리", "항목", "담당", "비용 (백만원)", "배출계수", "배출량 (tCO₂eq)"].map(h =>
-              <th key={h} style={{ padding: "12px 14px", textAlign: ["항목","카테고리","담당"].includes(h) ? "left" : "right", fontSize: 12, fontWeight: 600, color: T.g500 }}>{h}</th>
-            )}
+          <thead><tr style={{ borderBottom: `1px solid ${T.g200}`, background: T.g50 }}>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: T.g500, width: "10%" }}>카테고리</th>
+            <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, color: T.g500, width: "20%" }}>항목</th>
+            {REPORT_YEARS.map(y => (
+              <th key={y} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, fontWeight: 600, color: y === YEAR_LATEST ? T.g800 : T.g500 }}>
+                {y}년{y === YEAR_LATEST ? " (최신)" : ""}<br/>
+                <span style={{ fontSize: 9, fontWeight: 400, color: T.g400 }}>(백만원)</span>
+              </th>
+            ))}
+            <th style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, fontWeight: 600, color: T.g500 }}>최신 배출량<br/><span style={{ fontSize: 9, fontWeight: 400, color: T.g400 }}>(tCO₂eq)</span></th>
           </tr></thead>
           <tbody>{S3.map((c, i) => {
             const mine = ce(c.dept);
-            const cost = data[c.id] || 0;
-            const em = c.ef ? cost * c.ef : 0;
-            const needInput = mine && ud !== "all" && !cost && c.id !== "c7";
-            return <tr key={c.id} style={{ borderBottom: i < S3.length - 1 ? `1px solid ${T.g100}` : "none", opacity: mine ? 1 : 0.5, background: needInput ? '#fff5f5' : "transparent" }}>
-              <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{c.c}</td>
-              <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800 }}>{c.name}</td>
-              <td style={{ padding: "10px 14px", fontSize: 12, color: T.g500 }}>{DEPTS[c.dept].name.split(" · ")[0]}</td>
-              <td style={{ padding: "6px 4px", textAlign: "right" }}>
-                {c.id === "c7" ? <span style={{ fontSize: 12, color: T.g400 }}>별도 산정</span> :
-                  <input type="number" value={data[c.id] || ""} disabled={!mine} onChange={e => set(c.id, parseFloat(e.target.value) || 0)}
-                    placeholder={needInput ? "입력" : "0"}
-                    style={{ width: 120, padding: "8px 12px", borderRadius: 6, border: needInput ? `2px solid ${T.rose}` : `1px solid ${T.g200}`, background: mine ? T.white : T.g50, color: T.g900, textAlign: "right", fontSize: 14, opacity: mine ? 1 : 0.5, fontWeight: 600 }} />}
-              </td>
-              <td style={{ padding: "10px 14px", textAlign: "right", fontSize: 12, color: T.g500 }}>{c.ef || "-"}</td>
-              <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: T.g900, fontFeatureSettings: "'tnum'" }}>{em.toFixed(1)}</td>
-            </tr>;
+            const latestCost = getS3Year(c.id, YEAR_LATEST);
+            const em = c.ef ? latestCost * c.ef : 0;
+            const hasLatestInput = latestCost > 0;
+            const needInput = mine && ud !== "all" && !hasLatestInput && c.id !== "c7";
+            return (
+              <tr key={c.id} style={{ borderBottom: i < S3.length - 1 ? `1px solid ${T.g100}` : "none", opacity: mine ? 1 : 0.5, background: needInput ? '#fff5f5' : "transparent" }}>
+                <td style={{ padding: "10px 14px", fontSize: 11, color: T.g500 }}>{c.c}</td>
+                <td style={{ padding: "10px 14px", fontWeight: 500, color: T.g800, fontSize: 12 }}>
+                  {c.name}
+                  <div style={{ fontSize: 10, color: T.g400, marginTop: 2 }}>{DEPTS[c.dept].name.split(" · ")[0]}</div>
+                </td>
+                {REPORT_YEARS.map(y => {
+                  const v = getS3Year(c.id, y);
+                  const isLatest = y === YEAR_LATEST;
+                  const hl = mine && ud !== "all" && !v && isLatest && c.id !== "c7";
+                  return (
+                    <td key={y} style={{ padding: "6px 4px", textAlign: "center" }}>
+                      {c.id === "c7" ? (
+                        <span style={{ fontSize: 10, color: T.g400 }}>별도 산정</span>
+                      ) : (
+                        <input type="number" value={v || ""} disabled={!mine}
+                          onChange={e => setS3Year(c.id, y, e.target.value)}
+                          placeholder={hl ? "입력" : "0"}
+                          style={{
+                            width: "100%", padding: "6px 8px", borderRadius: 5,
+                            border: hl ? `2px solid ${T.rose}` : `1px solid ${T.g200}`,
+                            background: isLatest ? T.white : T.g50,
+                            color: T.g900, textAlign: "right", fontSize: 12,
+                            opacity: mine ? 1 : 0.5, fontWeight: 600
+                          }} />
+                      )}
+                    </td>
+                  );
+                })}
+                <td style={{ padding: "10px 14px", textAlign: "right", fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'", fontSize: 13 }}>
+                  {em.toFixed(1)}
+                </td>
+              </tr>
+            );
           })}</tbody>
         </table>
       </div>
@@ -1475,7 +1682,16 @@ function Scope3P({ data, set, ud }) {
           return `• ${cat?.c} ${cat?.name}: ${v.toLocaleString(undefined, {maximumFractionDigits: 1})} 백만원`;
         }).join("\n"),
         apply: () => {
-          Object.entries(parsed).forEach(([k, v]) => set(k, v));
+          Object.entries(parsed).forEach(([k, v]) => {
+            // 연도별 구조 유지, 최신 연도에 저장
+            const current = data[k];
+            let yearObj = (typeof current === "object" && current !== null) ? { ...current } : {};
+            if (typeof current === "number" && current > 0 && !yearObj[YEAR_LATEST]) {
+              yearObj[YEAR_LATEST] = current; // 기존 단일 숫자 보존
+            }
+            yearObj[YEAR_LATEST] = v; // 추출된 값은 최신 연도에
+            set(k, yearObj);
+          });
         }
       };
     } catch (e) {
@@ -2971,26 +3187,62 @@ function ClimateGraphs({ scopeData, blockData }) {
   const s1Latest = s1Yearly[2] || 0;
   
   // Scope 2 (현재 단일 연도, 최신 연도에 매핑)
-  const s2Kwh = scopeData.s2.yearly_val 
-    ? (scopeData.s2.input_type === "원" ? scopeData.s2.yearly_val / 165 : scopeData.s2.yearly_val)
-    : (scopeData.s2.monthly || []).reduce((a, b) => a + (parseFloat(b) || 0), 0);
-  const s2Latest = (s2Kwh / 1000) * EFS2;
-  
-  // Scope 3 (현재 단일 연도)
-  const s3Latest = S3.reduce((sum, c) => {
-    if (c.id === "c7") {
-      const d = scopeData.s3.commute || {};
-      return sum + ((d.people||0) * (d.distance||0) * 250 * 0.17 / 1000);
+  // Scope 2 연도별 계산 (3년치 구조 + 호환)
+  const calcScope2 = (s2, year) => {
+    // yearly_val_YYYY 우선 체크
+    let val = parseFloat(s2["yearly_val_" + year]) || 0;
+    // 호환: yearly_val 단일 값은 최신 연도에만 매핑
+    if (!val && year === YEAR_LATEST) {
+      val = parseFloat(s2.yearly_val) || 0;
     }
-    return sum + (scopeData.s3[c.id] || 0) * (c.ef || 0);
-  }, 0);
+    // 월별 데이터 합산
+    if (!val) {
+      const monthly = s2["_monthly_" + year];
+      if (Array.isArray(monthly)) {
+        val = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      } else if (year === YEAR_LATEST) {
+        // 기존 구조: data[0..11]
+        let sum = 0;
+        for (let i = 0; i < 12; i++) sum += parseFloat(s2[i]) || 0;
+        if (sum > 0) val = sum;
+      }
+    }
+    const kwh = (s2.input_type === "원") ? val / 165 : val;
+    return (kwh / 1000) * EFS2;
+  };
   
-  // 1. 3년 추세 (Scope 1 연도별) + Scope 2/3는 최신 연도만
+  const s2Yearly = REPORT_YEARS.map(y => calcScope2(scopeData.s2, y));
+  const s2Latest = s2Yearly[2] || 0;
+  
+  // Scope 3 연도별 계산 (3년치 객체 구조 + 단일 숫자 호환)
+  const calcScope3 = (s3, year) => {
+    return S3.reduce((sum, c) => {
+      if (c.id === "c7") {
+        // 통근은 별도 구조 (최신 연도에만)
+        if (year !== YEAR_LATEST) return sum;
+        const d = s3.commute || {};
+        return sum + ((d.people||0) * (d.distance||0) * 250 * 0.17 / 1000);
+      }
+      const raw = s3[c.id];
+      let val = 0;
+      if (typeof raw === "object" && raw !== null) {
+        val = parseFloat(raw[year]) || 0;
+      } else if (year === YEAR_LATEST) {
+        val = parseFloat(raw) || 0;
+      }
+      return sum + val * (c.ef || 0);
+    }, 0);
+  };
+  
+  const s3Yearly = REPORT_YEARS.map(y => calcScope3(scopeData.s3, y));
+  const s3Latest = s3Yearly[2] || 0;
+  
+  // 1. 3년 추세 (Scope 1, 2, 3 모두 연도별)
   const yearlyTrend = REPORT_YEARS.map((y, i) => ({
     year: y + "",
     "Scope 1": +(s1Yearly[i] || 0).toFixed(2),
-    "Scope 2": i === 2 ? +s2Latest.toFixed(2) : 0,
-    "Scope 3": i === 2 ? +s3Latest.toFixed(2) : 0,
+    "Scope 2": +(s2Yearly[i] || 0).toFixed(2),
+    "Scope 3": +(s3Yearly[i] || 0).toFixed(2),
   }));
   
   // 2. 최신 연도 Scope 1·2·3 비교
@@ -3057,7 +3309,7 @@ function ClimateGraphs({ scopeData, blockData }) {
             </span>
           )}
         </div>
-        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: tCO₂eq · GRI 102-5 · 연도별 Scope 1 추이 (Scope 2/3는 {YEAR_LATEST}년 데이터만)</p>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: tCO₂eq · GRI 102-5/6/7 · Scope 1·2·3 전체 3년치 추이</p>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={yearlyTrend}>
             <CartesianGrid strokeDasharray="3 3" stroke={T.g200}/>
@@ -3427,6 +3679,315 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 📄 보고서 미리보기 (POLICY · ACTIONS · METRICS · TARGETS 4칸)
+// 와이씨켐 v9 스타일 레이아웃
+// ═══════════════════════════════════════════════════════════════════════
+function ReportPreview({ scopeData, blockData }) {
+  const sub = blockData["_102_sub"] || {};
+  const getText = (fid) => {
+    const v = sub[fid];
+    if (!v) return null;
+    if (typeof v === "object" && v.v) return v.v;
+    if (typeof v === "string") return v;
+    return null;
+  };
+  const getNumber = (fid) => {
+    const v = sub[fid];
+    if (!v) return null;
+    if (typeof v === "object" && v.v) return v.v;
+    if (typeof v === "string" || typeof v === "number") return v;
+    return null;
+  };
+  
+  // 3년치 배출량 계산
+  const s1Yearly = calcScope1Yearly(scopeData.s1);
+  
+  const calcS2 = (year) => {
+    const s2 = scopeData.s2;
+    let v = parseFloat(s2["yearly_val_" + year]) || 0;
+    if (!v && year === YEAR_LATEST) v = parseFloat(s2.yearly_val) || 0;
+    if (!v) {
+      const m = s2["_monthly_" + year];
+      if (Array.isArray(m)) v = m.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      else if (year === YEAR_LATEST) {
+        for (let i = 0; i < 12; i++) v += parseFloat(s2[i]) || 0;
+      }
+    }
+    const kwh = s2.input_type === "원" ? v / 165 : v;
+    return (kwh / 1000) * EFS2;
+  };
+  const s2Yearly = REPORT_YEARS.map(y => calcS2(y));
+  
+  const calcS3 = (year) => S3.reduce((sum, c) => {
+    if (c.id === "c7" && year !== YEAR_LATEST) return sum;
+    const raw = scopeData.s3[c.id];
+    let val = 0;
+    if (typeof raw === "object" && raw !== null) val = parseFloat(raw[year]) || 0;
+    else if (year === YEAR_LATEST) val = parseFloat(raw) || 0;
+    return sum + val * (c.ef || 0);
+  }, 0);
+  const s3Yearly = REPORT_YEARS.map(y => calcS3(y));
+  
+  const totalYearly = REPORT_YEARS.map((_, i) => s1Yearly[i] + s2Yearly[i] + s3Yearly[i]);
+  
+  // 감축률 (2023 대비 2025)
+  const reductionPct = totalYearly[0] > 0 
+    ? ((totalYearly[0] - totalYearly[2]) / totalYearly[0] * 100).toFixed(1)
+    : null;
+  
+  const baseYear = getNumber("4_base_year") || REPORT_YEARS[0];
+  const targetShort = getNumber("4_target_short") || "1.5";
+  const targetMid = getNumber("4_target_mid") || "10";
+  const targetLong = getNumber("4_target_long") || "20";
+  
+  const capex = getNumber("1c_capex");
+  const opex = getNumber("1c_opex");
+  const revenue = getNumber("1c_revenue");
+  
+  // 카드 컴포넌트
+  const Card = ({ icon, title, subtitle, children, color }) => (
+    <div style={{
+      background: T.white, borderRadius: 12, padding: 20,
+      border: `1px solid ${T.g200}`,
+      borderTop: `4px solid ${color}`,
+      minHeight: 300, display: "flex", flexDirection: "column"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: T.g900 }}>{title}</h3>
+      </div>
+      <p style={{ fontSize: 11, color: T.g400, marginBottom: 14, letterSpacing: "0.04em", textTransform: "uppercase" }}>{subtitle}</p>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      {/* 헤더 */}
+      <div style={{ marginBottom: 24, paddingBottom: 16, borderBottom: `2px solid ${T.g900}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.white, background: T.g900, padding: "4px 10px", borderRadius: 4, letterSpacing: "0.06em" }}>
+            GRI 102 · 기후변화 2025
+          </span>
+          <span style={{ fontSize: 11, color: T.g500 }}>보고 기간: {REPORT_YEARS[0]} ~ {REPORT_YEARS[2]}</span>
+        </div>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: T.g900, letterSpacing: "-0.02em", marginBottom: 4 }}>
+          기후변화 대응 보고서
+        </h1>
+        <p style={{ fontSize: 13, color: T.g500 }}>
+          파리협정 1.5°C 부합 전환 계획 · 감축 목표 및 이행 현황 · 공정한 전환
+        </p>
+      </div>
+      
+      {/* 상단 요약 KPI */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+        <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+          <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>TOTAL EMISSIONS ({YEAR_LATEST})</p>
+          <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>
+            {totalYearly[2].toFixed(1)}
+          </p>
+          <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>tCO₂eq</p>
+        </div>
+        <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+          <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>YEAR-OVER-YEAR</p>
+          <p style={{ fontSize: 22, fontWeight: 700, color: reductionPct && +reductionPct > 0 ? T.emerald : T.rose, fontFeatureSettings: "'tnum'" }}>
+            {reductionPct !== null ? (+reductionPct > 0 ? "▼" : "▲") + " " + Math.abs(+reductionPct) + "%" : "-"}
+          </p>
+          <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>{REPORT_YEARS[0]} → {REPORT_YEARS[2]}</p>
+        </div>
+        <div style={{ background: T.violetBg, border: `1px solid ${T.violet}33`, borderRadius: 10, padding: 16 }}>
+          <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>BASE YEAR</p>
+          <p style={{ fontSize: 22, fontWeight: 700, color: T.g900 }}>{baseYear}</p>
+          <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>기준 연도</p>
+        </div>
+        <div style={{ background: T.amberBg, border: `1px solid ${T.amber}33`, borderRadius: 10, padding: 16 }}>
+          <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>ANNUAL TARGET</p>
+          <p style={{ fontSize: 22, fontWeight: 700, color: T.g900 }}>-{targetShort}%</p>
+          <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>연간 감축 목표</p>
+        </div>
+      </div>
+      
+      {/* 본문 4칸 (POLICY / ACTIONS / METRICS / TARGETS) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+        
+        {/* POLICY */}
+        <Card icon="📜" title="POLICY" subtitle="정책 및 거버넌스 · GRI 102-1-a, 1-d" color={T.blue}>
+          {getText("1a_policy") ? (
+            <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.7, marginBottom: 12 }}>
+              {getText("1a_policy")}
+            </p>
+          ) : (
+            <p style={{ fontSize: 12, color: T.g400, lineHeight: 1.7, marginBottom: 12, fontStyle: "italic" }}>
+              전환계획 정책 서술이 작성되지 않았습니다. GRI 102-1-a에서 작성하세요.
+            </p>
+          )}
+          {getText("1d_desc") && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 700, color: T.g500, marginTop: 14, marginBottom: 6, letterSpacing: "0.04em" }}>
+                거버넌스 체계
+              </p>
+              <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.7 }}>
+                {getText("1d_desc")}
+              </p>
+            </>
+          )}
+        </Card>
+        
+        {/* ACTIONS */}
+        <Card icon="⚡" title="ACTIONS" subtitle="실행 활동 및 투자 · GRI 102-1-c, 1-e, 1-g" color={T.emerald}>
+          {(capex || opex) ? (
+            <div style={{ padding: 12, background: T.g50, borderRadius: 8, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {capex && (
+                  <div>
+                    <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em" }}>CAPEX</p>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: T.g900 }}>{parseFloat(capex).toLocaleString()} <span style={{ fontSize: 11, color: T.g500 }}>백만원</span></p>
+                  </div>
+                )}
+                {opex && (
+                  <div>
+                    <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em" }}>OPEX</p>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: T.g900 }}>{parseFloat(opex).toLocaleString()} <span style={{ fontSize: 11, color: T.g500 }}>백만원</span></p>
+                  </div>
+                )}
+              </div>
+              {revenue && capex && (
+                <p style={{ fontSize: 10, color: T.g500, marginTop: 8 }}>
+                  매출 대비 투자 비율: {(parseFloat(capex) / parseFloat(revenue) * 100).toFixed(2)}%
+                </p>
+              )}
+            </div>
+          ) : null}
+          
+          {getText("1e_integration") ? (
+            <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.7, marginBottom: 10 }}>
+              {getText("1e_integration")}
+            </p>
+          ) : null}
+          
+          {getText("1g_just_transition") && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 700, color: T.g500, marginTop: 14, marginBottom: 6, letterSpacing: "0.04em" }}>
+                공정한 전환
+              </p>
+              <p style={{ fontSize: 12, color: T.g700, lineHeight: 1.7 }}>
+                {getText("1g_just_transition")}
+              </p>
+            </>
+          )}
+          
+          {!getText("1e_integration") && !getText("1g_just_transition") && !capex && !opex && (
+            <p style={{ fontSize: 12, color: T.g400, lineHeight: 1.7, fontStyle: "italic" }}>
+              실행 활동 및 투자 내용이 작성되지 않았습니다.
+            </p>
+          )}
+        </Card>
+        
+        {/* METRICS */}
+        <Card icon="📊" title="METRICS" subtitle="측정 지표 · GRI 102-5, 6, 7" color={T.violet}>
+          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.g200}` }}>
+                <th style={{ padding: "6px 4px", textAlign: "left", fontSize: 10, color: T.g500, fontWeight: 600 }}>구분</th>
+                {REPORT_YEARS.map(y => (
+                  <th key={y} style={{ padding: "6px 4px", textAlign: "right", fontSize: 10, color: y === YEAR_LATEST ? T.g800 : T.g500, fontWeight: 600 }}>
+                    {y}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: `1px solid ${T.g100}` }}>
+                <td style={{ padding: "8px 4px", color: T.g700 }}>Scope 1</td>
+                {s1Yearly.map((v, i) => (
+                  <td key={i} style={{ padding: "8px 4px", textAlign: "right", fontWeight: 600, color: T.g800, fontFeatureSettings: "'tnum'" }}>
+                    {v > 0 ? v.toFixed(1) : "-"}
+                  </td>
+                ))}
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${T.g100}` }}>
+                <td style={{ padding: "8px 4px", color: T.g700 }}>Scope 2</td>
+                {s2Yearly.map((v, i) => (
+                  <td key={i} style={{ padding: "8px 4px", textAlign: "right", fontWeight: 600, color: T.g800, fontFeatureSettings: "'tnum'" }}>
+                    {v > 0 ? v.toFixed(1) : "-"}
+                  </td>
+                ))}
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${T.g100}` }}>
+                <td style={{ padding: "8px 4px", color: T.g700 }}>Scope 3</td>
+                {s3Yearly.map((v, i) => (
+                  <td key={i} style={{ padding: "8px 4px", textAlign: "right", fontWeight: 600, color: T.g800, fontFeatureSettings: "'tnum'" }}>
+                    {v > 0 ? v.toFixed(1) : "-"}
+                  </td>
+                ))}
+              </tr>
+              <tr style={{ background: T.g50 }}>
+                <td style={{ padding: "10px 4px", color: T.g800, fontWeight: 700 }}>합계</td>
+                {totalYearly.map((v, i) => (
+                  <td key={i} style={{ padding: "10px 4px", textAlign: "right", fontWeight: 800, color: T.g900, fontSize: 13, fontFeatureSettings: "'tnum'" }}>
+                    {v.toFixed(1)}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+          <p style={{ fontSize: 10, color: T.g400, marginTop: 8, lineHeight: 1.5 }}>
+            단위: tCO₂eq · 배출계수 Scope 2: {EFS2} tCO₂eq/MWh (환경부 2025.12.17)
+          </p>
+        </Card>
+        
+        {/* TARGETS */}
+        <Card icon="🎯" title="TARGETS" subtitle="감축 목표 · GRI 102-4" color={T.amber}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: 12, background: T.g50, borderRadius: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: T.g500, letterSpacing: "0.04em", fontWeight: 600 }}>단기 (1~2년)</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: T.g900 }}>-{targetShort}% / 년</span>
+              </div>
+            </div>
+            <div style={{ padding: 12, background: T.g50, borderRadius: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: T.g500, letterSpacing: "0.04em", fontWeight: 600 }}>중기 (3~5년)</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: T.g900 }}>-{targetMid}% 누적</span>
+              </div>
+            </div>
+            <div style={{ padding: 12, background: T.g50, borderRadius: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: T.g500, letterSpacing: "0.04em", fontWeight: 600 }}>장기 (10년+)</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: T.g900 }}>-{targetLong}% 누적</span>
+              </div>
+            </div>
+          </div>
+          
+          {getText("4_narrative") && (
+            <p style={{ fontSize: 11, color: T.g600, lineHeight: 1.7, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.g100}` }}>
+              {getText("4_narrative")}
+            </p>
+          )}
+        </Card>
+      </div>
+      
+      {/* 푸터 */}
+      <div style={{ padding: "20px 0", borderTop: `1px solid ${T.g200}`, textAlign: "center" }}>
+        <p style={{ fontSize: 11, color: T.g400, marginBottom: 4 }}>
+          이 보고서는 <strong style={{ color: T.g700 }}>GRI 102: 기후변화 2025</strong> 표준에 따라 작성되었으며,
+          파리협정 1.5°C 경로 부합을 목표로 합니다.
+        </p>
+        <p style={{ fontSize: 10, color: T.g400 }}>
+          생성일: {new Date().toLocaleDateString('ko-KR')} · The 4th Edge ESG Platform
+        </p>
+      </div>
+      
+      {/* 인쇄·PDF 안내 */}
+      <div style={{ position: "fixed", bottom: 24, right: 24, background: T.g900, color: T.white, padding: "10px 16px", borderRadius: 8, fontSize: 12, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+        onClick={() => window.print()}>
+        🖨️ 인쇄 / PDF 저장
+      </div>
+    </div>
+  );
+}
+
 function Dash({ scopeData, blockData, blocks, standards }) {
   // Scope 1: 최신 연도 기준 (3년치 구조 호환)
   let s1total = calcScope1Total(scopeData.s1, YEAR_LATEST);
@@ -3447,20 +4008,39 @@ function Dash({ scopeData, blockData, blocks, standards }) {
     }
   });
   
-  // Scope 2: 연간 또는 월별
+  // Scope 2: 최신 연도 기준 (3년치 구조 호환)
   let s2total = 0;
-  const yearlyVal = scopeData.s2.yearly_val;
-  if (yearlyVal) {
-    const inputType = scopeData.s2.input_type || "kWh";
-    const kwh = inputType === "원" ? (parseFloat(yearlyVal) || 0) / 165 : (parseFloat(yearlyVal) || 0);
+  {
+    const s2 = scopeData.s2;
+    const inputType = s2.input_type || "kWh";
+    // yearly_val_2025 (최신) 우선 → 호환 yearly_val → 월별 합계
+    let v = parseFloat(s2["yearly_val_" + YEAR_LATEST]) || parseFloat(s2.yearly_val) || 0;
+    if (!v) {
+      const monthly = s2["_monthly_" + YEAR_LATEST];
+      if (Array.isArray(monthly)) {
+        v = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      } else {
+        for (let i = 0; i < 12; i++) v += parseFloat(s2[i]) || 0;
+      }
+    }
+    const kwh = inputType === "원" ? v / 165 : v;
     s2total = (kwh / 1000) * EFS2;
-  } else {
-    for (let i = 0; i < 12; i++) s2total += ((scopeData.s2[i] || 0) / 1000) * EFS2;
   }
   
   // Scope 3
+  // Scope 3: 최신 연도 기준 (3년치 구조 호환)
   let s3total = 0;
-  S3.forEach(c => { if (c.ef) s3total += (scopeData.s3[c.id] || 0) * c.ef; });
+  S3.forEach(c => {
+    if (!c.ef) return;
+    const raw = scopeData.s3[c.id];
+    let v = 0;
+    if (typeof raw === "object" && raw !== null) {
+      v = parseFloat(raw[YEAR_LATEST]) || 0;
+    } else {
+      v = parseFloat(raw) || 0;
+    }
+    s3total += v * c.ef;
+  });
   const grand = s1total + s2total + s3total;
 
   const totalBlocks = blocks.length;
@@ -3484,7 +4064,12 @@ function Dash({ scopeData, blockData, blocks, standards }) {
     if (b.input_type === 'scope2_table') {
       return scopeData.s2.yearly_val || Object.keys(scopeData.s2).some(k => !isNaN(parseInt(k)) && scopeData.s2[k]);
     }
-    if (b.input_type === 'scope3_table') return S3.some(c => c.id !== 'c7' && scopeData.s3[c.id]);
+    if (b.input_type === 'scope3_table') return S3.some(c => {
+      if (c.id === 'c7') return false;
+      const raw = scopeData.s3[c.id];
+      if (typeof raw === "object" && raw !== null) return Object.values(raw).some(x => parseFloat(x) > 0);
+      return parseFloat(raw) > 0;
+    });
     const v = blockData[b.id];
     if (b.input_type === 'text') return v?.content_text && v.content_text.length > 10;
     return v?.content_json && v.content_json.length > 0 && v.content_json.some(r => Object.values(r||{}).some(x => x));
@@ -3703,6 +4288,11 @@ function App() {
             style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "dash" ? T.g100 : "transparent", color: pg === "dash" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "dash" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2 }}>
             Dashboard
           </button>
+          <button onClick={() => setPg("report")}
+            style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "report" ? T.g100 : "transparent", color: pg === "report" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "report" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>📄 보고서 미리보기</span>
+            <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>NEW</span>
+          </button>
 
           <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>GRI 표준</p>
           {standards.map(s => (
@@ -3731,6 +4321,7 @@ function App() {
 
       <div style={{ flex: 1, padding: "32px 40px", overflowY: "auto", maxHeight: "100vh" }}>
         {pg === "dash" && <Dash scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards}/>}
+        {pg === "report" && <ReportPreview scopeData={scopeData} blockData={blockData}/>}
         {standards.map(s => {
           if (pg !== "gri_" + s.code) return null;
           const sBlocks = blocks.filter(b => b.gri_code === s.code);
