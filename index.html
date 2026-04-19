@@ -54,6 +54,42 @@ const GWP = { co2: 1, ch4: 28, n2o: 265 };
 // 전력 배출계수 (기후에너지환경부 2025.12.17 공표, 2023년 기준)
 const EFS2 = 0.4173; // tCO₂eq/MWh
 
+// 연도별 전력배출계수 이력 (공시 시점·정확성 향상용)
+// 2025.12 이전: 3년 평균, 3년 주기 공표
+// 2025.12 이후: 1년 평균, 1년 주기 공표 (기후에너지환경부 갱신 정책 변경)
+const POWER_EF_HISTORY = {
+  2011: 0.4594, // 2017 공표 (2011~2013 평균) - 배출권거래제 할당용 법정 고정값
+  2012: 0.4594,
+  2013: 0.4594,
+  2014: 0.4594,
+  2015: 0.4594,
+  2016: 0.4594,
+  2017: 0.4594,
+  2018: 0.4594,
+  2019: 0.4594,
+  2020: 0.4541, // 2025.03 공표 (2020~2022 평균)
+  2021: 0.4541,
+  2022: 0.4541,
+  2023: 0.4173, // 2025.12.17 공표 (2023년 기준, 최신)
+  2024: 0.4173, // 2024년 전용 공표 전까지 2023년 값 적용
+  2025: 0.4173, // 2025년 전용 공표 전까지 2023년 값 적용
+};
+
+// 연도별 최적 계수 반환 (없으면 최신값)
+const getPowerEF = (year) => {
+  if (!year) return EFS2;
+  return POWER_EF_HISTORY[year] || EFS2;
+};
+
+// 배출계수 최신 공표 정보
+const EFS2_SOURCE = {
+  value: 0.4173,
+  publishedDate: "2025.12.17",
+  source: "기후에너지환경부 온실가스종합정보센터",
+  baseYear: 2023,
+  note: "2025년 12월부터 1년 주기 공표로 변경 (기존 3년 주기)"
+};
+
 // 3년치 보고 연도 (오늘 기준 3년: 2023, 2024, 2025)
 const REPORT_YEARS = (() => {
   const current = new Date().getFullYear();
@@ -1041,8 +1077,8 @@ function Scope1P({ data, set, setS2Direct, ud }) {
       
       {mode === "excel" && (
         <ExcelUpload
-          hint="업체 엑셀 그대로 올리세요. Scope 1 + Scope 2(전력)까지 한 번에 자동 추출됩니다."
-          expectedFormat={"✅ 지원 포맷:\n① 정부 인벤토리 툴 포맷 — '1 활동도 입력' 시트에서 연료별 + 전력 3년치 자동 추출\n② 공급망 가치사슬 관리 툴 포맷\n③ 범용 포맷 — [연료] [2023] [2024] [단위] 헤더\n\n💡 연료명 자동 인식: LNG·LPG·경유·휘발유·등유·B-C유·전력\n💡 Scope 2(전력) 데이터는 자동으로 Scope 2 블록에도 반영됩니다"}
+          hint="업체 엑셀 그대로 올리세요. Scope 1 + Scope 2(전력)까지 한 번에 자동 추출됩니다. 활동량(사용량)만 추출하고 배출계수는 국가 최신값을 자동 적용합니다."
+          expectedFormat={"✅ 지원 포맷:\n① 정부 인벤토리 툴 포맷 — '1 활동도 입력' 시트에서 연료별 + 전력 3년치 자동 추출\n② 공급망 가치사슬 관리 툴 포맷\n③ 범용 포맷 — [연료] [2023] [2024] [단위] 헤더\n\n💡 연료명 자동 인식: LNG·LPG·경유·휘발유·등유·B-C유·전력\n💡 Scope 2(전력) 데이터는 자동으로 Scope 2 블록에도 반영됩니다\n\n⚡ 배출계수 자동 적용: 업체 엑셀에 계산된 tCO₂eq 값이 있어도 무시하고, 환경부고시 제2024-155호 + 기후에너지환경부 2025.12.17 공표 최신 전력계수 0.4173 tCO₂eq/MWh를 일괄 적용합니다. 이는 6개사 비교 일관성 확보 및 국가 최신 기준 부합을 위함입니다."}
           onParse={parseExcel}
           onApplied={() => setTimeout(() => setMode("yearly"), 1500)}
         />
@@ -1077,11 +1113,12 @@ function Scope2P({ data, set, ud }) {
       return data["yearly_val_" + y] || "";
     };
     
-    // 연도별 환산
+    // 연도별 환산 (연도별 최적 계수 적용)
     const yearCalc = REPORT_YEARS.map(y => {
       const val = getYearVal(y);
       const kwh = getKwhFromValue(val);
-      return { year: y, val, kwh, mwh: kwh / 1000, co2: (kwh / 1000) * EFS2 };
+      const ef = getPowerEF(y);
+      return { year: y, val, kwh, mwh: kwh / 1000, co2: (kwh / 1000) * ef, ef };
     });
     
     // 3년 합계
@@ -1093,13 +1130,30 @@ function Scope2P({ data, set, ud }) {
     
     return (
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>📅 3년치 전력 사용량</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueBg, padding: "3px 8px", borderRadius: 4 }}>
             {REPORT_YEARS[0]} ~ {REPORT_YEARS[2]}
           </span>
-          <span style={{ fontSize: 12, color: T.g400, marginLeft: "auto" }}>배출계수 {EFS2} tCO₂eq/MWh</span>
         </div>
+        
+        {/* 최신 배출계수 안내 배너 */}
+        <div style={{ 
+          padding: "10px 14px", marginBottom: 14, 
+          background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 8,
+          display: "flex", alignItems: "center", gap: 10
+        }}>
+          <span style={{ fontSize: 16 }}>⚡</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: T.g800, marginBottom: 2 }}>
+              최신 국가 표준 배출계수 자동 적용
+            </p>
+            <p style={{ fontSize: 11, color: T.g600, lineHeight: 1.5 }}>
+              {EFS2_SOURCE.publishedDate} {EFS2_SOURCE.source} 공표 · {EFS2_SOURCE.baseYear}년 기준 {EFS2} tCO₂eq/MWh · 업체별 과거 계수 차이를 배제하여 6개사 비교 일관성 확보
+            </p>
+          </div>
+        </div>
+        
         <p style={{ fontSize: 13, color: T.g500, marginBottom: 14, lineHeight: 1.6 }}>
           💡 한전 사이버지점에서 각 연도별 연간 합계를 입력하세요. 엑셀 업로드 시 자동 채워집니다.
         </p>
@@ -1460,8 +1514,8 @@ function Scope2P({ data, set, ud }) {
       {mode === "monthly" && renderMonthly()}
       {mode === "excel" && (
         <ExcelUpload
-          hint="업체에서 이미 쓰던 엑셀 그대로 올리세요. 자동으로 포맷 감지합니다."
-          expectedFormat={"✅ 지원 포맷:\n① 월별 시계열 인벤토리 포맷 — '활동도 입력' 시트에서 전력 사용량 자동 추출\n② 공급망 가치사슬 관리 툴 포맷 — 사업장별 전력 사용 데이터\n③ 한전 사이버지점/한전ON 다운로드 — 청구년월 + 사용량(kWh) 표\n④ 범용 — [월 | 사용량(kWh)] 형식 엑셀"}
+          hint="한전 사이버지점 다운로드 또는 업체 엑셀 그대로. 전력 사용량(kWh)만 추출하고 최신 배출계수 0.4173을 자동 적용합니다."
+          expectedFormat={"✅ 지원 포맷:\n① 월별 시계열 인벤토리 포맷 — '활동도 입력' 시트에서 전력 사용량 자동 추출\n② 공급망 가치사슬 관리 툴 포맷 — 사업장별 전력 사용 데이터\n③ 한전 사이버지점/한전ON 다운로드 — 청구년월 + 사용량(kWh) 표\n④ 범용 — [월 | 사용량(kWh)] 형식 엑셀\n\n⚡ 배출계수 정책: 업체 엑셀에 계산된 tCO₂eq 값은 무시하고, 기후에너지환경부 2025.12.17 공표 최신 계수(0.4173 tCO₂eq/MWh)를 자동 적용합니다."}
           onParse={parseExcel}
           onApplied={() => setTimeout(() => setMode("yearly"), 1500)}
         />
@@ -3275,7 +3329,7 @@ function ClimateGraphs({ scopeData, blockData }) {
       }
     }
     const kwh = (s2.input_type === "원") ? val / 165 : val;
-    return (kwh / 1000) * EFS2;
+    return (kwh / 1000) * getPowerEF(year);
   };
   
   const s2Yearly = REPORT_YEARS.map(y => calcScope2(scopeData.s2, y));
@@ -3563,17 +3617,22 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
     if (block.input_type === 'scope1_table' || block.input_type === 'scope2_table' || block.input_type === 'scope3_table') {
       let child;
       let scopeNeedInput = false;
+      // guide 오버라이드 (DB에 저장된 옛 배출계수 설명 교체)
+      let scopeGuide = block.guide || "";
       if (block.input_type === 'scope1_table') {
         child = <Scope1P data={scopeData.s1} set={setS1} setS2Direct={setS2} ud={ud}/>;
         const myFuels = [...SF, ...MF].filter(f => ud === 'all' || f.dept === ud);
         scopeNeedInput = myFuels.length > 0 && myFuels.every(f => !scopeData.s1[f.id]);
+        scopeGuide = `고정연소(LNG·LPG·등유 등)와 이동연소(차량 연료) 소비량을 입력하면 환경부고시 제2024-155호 [별표 12] 최신 배출계수를 적용해 tCO₂eq가 자동 계산됩니다.`;
       } else if (block.input_type === 'scope2_table') {
         child = <Scope2P data={scopeData.s2} set={setS2} ud={ud}/>;
         scopeNeedInput = (ud === 'all' || ud === 'admin') && !Object.values(scopeData.s2 || {}).some(v => v);
+        scopeGuide = `한전 청구서 기준 월별 또는 연간 전력 사용량을 입력합니다. 배출계수 ${EFS2} tCO₂eq/MWh (${EFS2_SOURCE.publishedDate} ${EFS2_SOURCE.source} 공표 최신값)를 자동 적용합니다. 업체별 과거 계수 차이를 배제하여 비교 일관성을 확보합니다.`;
       } else {
         child = <Scope3P data={scopeData.s3} set={setS3} ud={ud}/>;
         const myCat = S3.filter(c => c.id !== 'c7' && (ud === 'all' || c.dept === ud));
         scopeNeedInput = myCat.length > 0 && myCat.every(c => !scopeData.s3[c.id]);
+        scopeGuide = `Scope 3(가치사슬) 15개 카테고리 중 해당 항목에 연간 지출액(백만원)을 입력하면 환경부·한국환경산업기술원 탄소발자국 DB 기반 배출계수로 자동 환산됩니다.`;
       }
       const scopeHighlight = scopeNeedInput && ud !== 'all';
       return (
@@ -3585,7 +3644,7 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
               {griCodes && <span style={{ fontSize: 11, color: T.g400 }}>📊 GRI {griCodes}</span>}
               {vsmeCodes && <span style={{ fontSize: 11, color: T.g400 }}>📋 VSME {vsmeCodes}</span>}
             </div>
-            <p style={{ fontSize: 13, color: T.g500, marginTop: 6 }}>{block.guide}</p>
+            <p style={{ fontSize: 13, color: T.g500, marginTop: 6, lineHeight: 1.6 }}>{scopeGuide}</p>
           </div>
           <div style={{ padding: 24 }}>{child}</div>
         </div>
@@ -3782,7 +3841,7 @@ function ReportPreview({ scopeData, blockData }) {
       }
     }
     const kwh = s2.input_type === "원" ? v / 165 : v;
-    return (kwh / 1000) * EFS2;
+    return (kwh / 1000) * getPowerEF(year);
   };
   const s2Yearly = REPORT_YEARS.map(y => calcS2(y));
   
@@ -4091,7 +4150,7 @@ function Dash({ scopeData, blockData, blocks, standards }) {
       }
     }
     const kwh = inputType === "원" ? v / 165 : v;
-    s2total = (kwh / 1000) * EFS2;
+    s2total = (kwh / 1000) * getPowerEF(YEAR_LATEST);
   }
   
   // Scope 3
