@@ -465,6 +465,7 @@ function FuelRowYearly({ fuel, value, unitKey, onChange, onUnitChange, disabled,
 function Scope1P({ data, set, ud }) {
   const [mode, setMode] = useState("yearly");
   const [units, setUnits] = useState({});
+  const [monthlyYear, setMonthlyYear] = useState(YEAR_LATEST); // 월별 입력 대상 연도
   const ce = d => ud === "all" || ud === d;
 
   const setUnit = (fuelId, unitKey) => setUnits(p => ({ ...p, [fuelId]: unitKey }));
@@ -538,20 +539,61 @@ function Scope1P({ data, set, ud }) {
     );
   };
 
+  // 월별 데이터 헬퍼 (연도별 구조 · 기존 배열 호환)
+  const getMonthly = (fuelId, year) => {
+    const raw = data["_monthly_" + fuelId];
+    if (Array.isArray(raw)) {
+      // 기존 구조 (단일 연도 배열) → 최신 연도로 매핑
+      return year === YEAR_LATEST ? raw : [];
+    }
+    if (raw && typeof raw === "object") {
+      return Array.isArray(raw[year]) ? raw[year] : [];
+    }
+    return [];
+  };
+  
+  const setMonthly = (fuelId, year, newMonthly) => {
+    const raw = data["_monthly_" + fuelId];
+    let base = {};
+    if (Array.isArray(raw)) {
+      // 기존 배열 → 객체로 전환하며 기존 데이터는 최신 연도에 유지
+      base = { [YEAR_LATEST]: raw };
+    } else if (raw && typeof raw === "object") {
+      base = { ...raw };
+    }
+    base[year] = newMonthly;
+    set("_monthly_" + fuelId, base);
+  };
+
   const renderMonthlyTable = (title, fuels, dk) => {
     return (
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: T.g800 }}>{title}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: T.g400 }}>{DEPTS[dk].name}</span>
+          {/* 📅 연도 선택 */}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, background: T.blueBg, padding: "4px 10px", borderRadius: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.blue }}>📅 입력 연도</span>
+            <select value={monthlyYear} onChange={e => setMonthlyYear(parseInt(e.target.value))}
+              style={{ padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.blue}44`, background: T.white, fontSize: 12, fontWeight: 700, color: T.g800, cursor: "pointer" }}>
+              {REPORT_YEARS.map(y => (
+                <option key={y} value={y}>{y}년{y === YEAR_LATEST ? " (최신)" : ""}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, overflow: "hidden", padding: 16 }}>
           {fuels.map(f => {
             const canEdit = ce(f.dept);
-            const monthly = data["_monthly_" + f.id] || [];
+            const monthly = getMonthly(f.id, monthlyYear);
             const uk = getUnit(f.id, f);
             const unit = (f.units || []).find(u => u.key === uk) || (f.units || [])[0];
             let sum = 0;
+            // 3년치 월별 합계 미리보기
+            const yearlyPreview = REPORT_YEARS.map(y => {
+              const arr = getMonthly(f.id, y);
+              return arr.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+            });
             return (
               <div key={f.id} style={{ marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${T.g100}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -561,11 +603,18 @@ function Scope1P({ data, set, ud }) {
                     style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.g200}`, background: T.white, fontSize: 12, color: T.g700 }}>
                     {(f.units || []).map(u => <option key={u.key} value={u.key}>{u.key}</option>)}
                   </select>
+                  <span style={{ fontSize: 11, color: T.g500, marginLeft: "auto" }}>
+                    📊 3년 연간합계: {REPORT_YEARS.map((y, i) => (
+                      <span key={y} style={{ marginLeft: 8, color: y === monthlyYear ? T.blue : T.g400, fontWeight: y === monthlyYear ? 700 : 500 }}>
+                        {y}: {yearlyPreview[i].toLocaleString()}
+                      </span>
+                    ))}
+                  </span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
                   {MO.map((m, i) => {
                     const v = monthly[i] || "";
-                    const highlight = canEdit && ud !== "all" && !v;
+                    const highlight = canEdit && ud !== "all" && !v && monthlyYear === YEAR_LATEST;
                     sum += parseFloat(v) || 0;
                     return (
                       <div key={i}>
@@ -573,7 +622,7 @@ function Scope1P({ data, set, ud }) {
                         <input type="number" value={v} disabled={!canEdit}
                           onChange={e => {
                             const newMonthly = [...monthly]; newMonthly[i] = e.target.value;
-                            set("_monthly_" + f.id, newMonthly);
+                            setMonthly(f.id, monthlyYear, newMonthly);
                           }}
                           style={{
                             width: "100%", padding: "6px 8px", borderRadius: 5,
@@ -586,7 +635,7 @@ function Scope1P({ data, set, ud }) {
                   })}
                 </div>
                 <div style={{ marginTop: 8, textAlign: "right", fontSize: 12, color: T.g500 }}>
-                  연간 합계: <strong style={{ color: T.g800 }}>{sum.toLocaleString()}</strong> {uk}
+                  {monthlyYear}년 연간 합계: <strong style={{ color: T.g800 }}>{sum.toLocaleString()}</strong> {uk}
                 </div>
               </div>
             );
@@ -3019,15 +3068,30 @@ function ClimateGraphs({ scopeData, blockData }) {
 
 function calcScope1Total(s1, targetYear) {
   const year = targetYear || YEAR_LATEST;
-  return [...SF, ...MF].reduce((sum, f) => {
+  let total = 0;
+  [...SF, ...MF].forEach(f => {
     const raw = s1[f.id];
     const amt = getYearValue(raw, year);
-    if (!amt) return sum;
     const unit = s1[f.id + "_unit"] || f.baseUnit;
     const conv = (f.units || []).find(u => u.key === unit);
-    const baseAmt = conv ? amt * conv.factor : amt;
-    return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
-  }, 0);
+    const factor = conv?.factor || 1;
+    if (amt) {
+      total += calc(amt * factor, f.ncv, f.co2, f.ch4, f.n2o).t;
+    }
+    // 월별 데이터 (연도별 객체 · 기존 배열 호환)
+    const monthly = s1["_monthly_" + f.id];
+    let arr = null;
+    if (Array.isArray(monthly)) {
+      arr = year === YEAR_LATEST ? monthly : null;
+    } else if (monthly && typeof monthly === "object") {
+      arr = Array.isArray(monthly[year]) ? monthly[year] : null;
+    }
+    if (arr && arr.length > 0) {
+      const sum = arr.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      total += calc(sum * factor, f.ncv, f.co2, f.ch4, f.n2o).t;
+    }
+  });
+  return total;
 }
 
 // 3년치 Scope 1 배출량 배열 반환 [2023, 2024, 2025]
@@ -3299,13 +3363,19 @@ function BlockPanel({ standard, blocks, blockData, setBlockData, scopeData, setS
 function Dash({ scopeData, blockData, blocks, standards }) {
   // Scope 1: 최신 연도 기준 (3년치 구조 호환)
   let s1total = calcScope1Total(scopeData.s1, YEAR_LATEST);
-  // 월별 추가 (기존 구조 유지)
+  // 월별 추가 (연도별 구조 + 기존 배열 호환)
   [...SF, ...MF].forEach(f => {
     const uk = scopeData.s1[f.id + "_unit"] || (f.units?.[0]?.key);
     const unit = (f.units || []).find(u => u.key === uk) || f.units?.[0];
     const monthly = scopeData.s1["_monthly_" + f.id];
-    if (monthly && Array.isArray(monthly)) {
-      const sum = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+    let monthlyArr = null;
+    if (Array.isArray(monthly)) {
+      monthlyArr = monthly; // 기존 구조
+    } else if (monthly && typeof monthly === "object") {
+      monthlyArr = Array.isArray(monthly[YEAR_LATEST]) ? monthly[YEAR_LATEST] : null;
+    }
+    if (monthlyArr && monthlyArr.length > 0) {
+      const sum = monthlyArr.reduce((a, b) => a + (parseFloat(b) || 0), 0);
       s1total += calc(sum * (unit?.factor || 1), f.ncv, f.co2, f.ch4, f.n2o).t;
     }
   });
@@ -3329,8 +3399,20 @@ function Dash({ scopeData, blockData, blocks, standards }) {
   const totalBlocks = blocks.length;
   const isDone = (b) => {
     if (b.input_type === 'scope1_table') {
-      return [...SF, ...MF].some(f => scopeData.s1[f.id]) ||
-             Object.keys(scopeData.s1).some(k => k.startsWith("_monthly_") && Array.isArray(scopeData.s1[k]) && scopeData.s1[k].some(v => v));
+      const hasYearly = [...SF, ...MF].some(f => {
+        const v = scopeData.s1[f.id];
+        if (typeof v === "number") return v > 0;
+        if (typeof v === "object" && v !== null) return Object.values(v).some(x => parseFloat(x) > 0);
+        return parseFloat(v) > 0;
+      });
+      const hasMonthly = Object.keys(scopeData.s1).some(k => {
+        if (!k.startsWith("_monthly_")) return false;
+        const m = scopeData.s1[k];
+        if (Array.isArray(m)) return m.some(v => v);
+        if (m && typeof m === "object") return Object.values(m).some(arr => Array.isArray(arr) && arr.some(v => v));
+        return false;
+      });
+      return hasYearly || hasMonthly;
     }
     if (b.input_type === 'scope2_table') {
       return scopeData.s2.yearly_val || Object.keys(scopeData.s2).some(k => !isNaN(parseInt(k)) && scopeData.s2[k]);
