@@ -4802,10 +4802,12 @@ function calcScope1Total(s1, targetYear) {
     const unit = s1[f.id + "_unit"] || f.baseUnit;
     const conv = (f.units || []).find(u => u.key === unit);
     const factor = conv?.factor || 1;
-    if (amt) {
+    // ═ v25 수정: 연간 데이터 우선. 연간이 있으면 월별은 무시 (중복 합산 방지) ═
+    if (amt > 0) {
       total += calc(amt * factor, f.ncv, f.co2, f.ch4, f.n2o).t;
+      return; // 이 연료는 끝
     }
-    // 월별 데이터 (연도별 객체 · 기존 배열 호환)
+    // 연간 값이 0일 때만 월별 합산 사용
     const monthly = s1["_monthly_" + f.id];
     let arr = null;
     if (Array.isArray(monthly)) {
@@ -4815,7 +4817,7 @@ function calcScope1Total(s1, targetYear) {
     }
     if (arr && arr.length > 0) {
       const sum = arr.reduce((a, b) => a + (parseFloat(b) || 0), 0);
-      total += calc(sum * factor, f.ncv, f.co2, f.ch4, f.n2o).t;
+      if (sum > 0) total += calc(sum * factor, f.ncv, f.co2, f.ch4, f.n2o).t;
     }
   });
   return total;
@@ -6854,24 +6856,8 @@ function ReportPreview({ scopeData, blockData }) {
 }
 
 function Dash({ scopeData, blockData, blocks, standards }) {
-  // Scope 1: 최신 연도 기준 (3년치 구조 호환)
+  // Scope 1: calcScope1Total이 이미 연간+월별 모두 처리 (v25 중복 합산 버그 수정)
   let s1total = calcScope1Total(scopeData.s1, YEAR_LATEST);
-  // 월별 추가 (연도별 구조 + 기존 배열 호환)
-  [...SF, ...MF].forEach(f => {
-    const uk = scopeData.s1[f.id + "_unit"] || (f.units?.[0]?.key);
-    const unit = (f.units || []).find(u => u.key === uk) || f.units?.[0];
-    const monthly = scopeData.s1["_monthly_" + f.id];
-    let monthlyArr = null;
-    if (Array.isArray(monthly)) {
-      monthlyArr = monthly; // 기존 구조
-    } else if (monthly && typeof monthly === "object") {
-      monthlyArr = Array.isArray(monthly[YEAR_LATEST]) ? monthly[YEAR_LATEST] : null;
-    }
-    if (monthlyArr && monthlyArr.length > 0) {
-      const sum = monthlyArr.reduce((a, b) => a + (parseFloat(b) || 0), 0);
-      s1total += calc(sum * (unit?.factor || 1), f.ncv, f.co2, f.ch4, f.n2o).t;
-    }
-  });
   
   // Scope 2: 최신 연도 기준 (3년치 구조 호환)
   let s2total = 0;
@@ -6944,8 +6930,8 @@ function Dash({ scopeData, blockData, blocks, standards }) {
 
   return <div>
     <div style={{ marginBottom: 28 }}>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>Dashboard</h2>
-      <p style={{ fontSize: 14, color: T.g500, marginTop: 2 }}>2025년 온실가스 배출량 및 GRI 작성 현황</p>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: T.g900, letterSpacing: "-0.02em" }}>대시보드</h2>
+      <p style={{ fontSize: 14, color: T.g500, marginTop: 2 }}>{YEAR_LATEST}년 온실가스 배출량 및 GRI 작성 현황</p>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
       <KPI label="총 배출량" value={grand} unit="tCO₂eq" />
@@ -7101,6 +7087,13 @@ function App() {
   }, []);
 
   const loadAll = useCallback(async () => {
+    // ═ v25: localStorage 우선 복구 (Supabase 저장 실패 대비) ═
+    try {
+      const cb = localStorage.getItem("esg_blockdata_ycchem");
+      if (cb) { const p = JSON.parse(cb); if (p && typeof p === "object") setBlockDataState(p); }
+      const cs = localStorage.getItem("esg_scopedata_ycchem");
+      if (cs) { const p = JSON.parse(cs); if (p && typeof p === "object" && p.s1) setScopeData(p); }
+    } catch(e) { console.log("localStorage load error:", e); }
     try {
       const rows = await sbFetch("esg_data?select=category,data");
       if (rows && rows.length > 0) {
@@ -7130,6 +7123,13 @@ function App() {
 
   const scopeTimer = React.useRef(null);
   const saveScope = useCallback((cat, val) => {
+    // ═ v25: localStorage 즉시 저장 ═
+    try {
+      const c = localStorage.getItem("esg_scopedata_ycchem");
+      const p = c ? JSON.parse(c) : { s1:{}, s2:{}, s3:{} };
+      p[cat] = val;
+      localStorage.setItem("esg_scopedata_ycchem", JSON.stringify(p));
+    } catch(e) { console.log("localStorage scope save error:", e); }
     if (scopeTimer.current) clearTimeout(scopeTimer.current);
     setSaving(true);
     scopeTimer.current = setTimeout(async () => {
@@ -7149,6 +7149,8 @@ function App() {
     setBlockDataState(prev => {
       const merged = { ...prev, [blockId]: { ...prev[blockId], ...data } };
       blockPendingRef.current[blockId] = merged[blockId];
+      // ═ v25: localStorage 즉시 저장 (새로고침해도 데이터 유지) ═
+      try { localStorage.setItem("esg_blockdata_ycchem", JSON.stringify(merged)); } catch(e) {}
       return merged;
     });
     if (blockTimer.current) clearTimeout(blockTimer.current);
@@ -7215,18 +7217,18 @@ function App() {
         </div>
 
         <div style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "8px 10px 4px", textTransform: "uppercase" }}>Overview</p>
+          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "8px 10px 4px" }}>개요</p>
           <button onClick={() => setPg("dash")}
             style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "dash" ? T.g100 : "transparent", color: pg === "dash" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "dash" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2 }}>
-            Dashboard
+            대시보드
           </button>
           <button onClick={() => setPg("report")}
             style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "report" ? T.g100 : "transparent", color: pg === "report" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "report" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>📄 보고서 미리보기</span>
-            <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>NEW</span>
+            <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>신규</span>
           </button>
 
-          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>중요성평가</p>
+          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px" }}>중요성평가</p>
           {(() => {
             const MAT_SUBS = [
               { key: "valuechain", icon: "🔗", label: "1. 가치사슬 매핑" },
@@ -7279,7 +7281,7 @@ function App() {
             );
           })()}
 
-          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px", textTransform: "uppercase" }}>GRI 표준</p>
+          <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px" }}>GRI 표준</p>
           {(() => {
             // 플랫폼 정의 GRI 표준 (DB 표준 + 하드코딩 추가분 병합)
             const SIDEBAR_STANDARDS = [
