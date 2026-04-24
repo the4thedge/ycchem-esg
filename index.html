@@ -8,9 +8,6 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-<!-- ═ v27: prop-types는 Recharts의 의존성이므로 반드시 먼저 로드 ═ -->
-<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
-<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -4585,55 +4582,19 @@ function SubField({ field, value, onChange, disabled }) {
   );
 }
 
-// 기후변화 대응 대시보드 그래프 (Recharts)
+// 기후변화 대응 대시보드 그래프 (순수 SVG · v28)
 function ClimateGraphs({ scopeData, blockData }) {
-  // ═ v27: Recharts 로드 감지 (미로드 시 재시도 + 명확한 UI) ═
-  const [rechartsReady, setRechartsReady] = useState(!!window.Recharts);
-  React.useEffect(() => {
-    if (window.Recharts) { setRechartsReady(true); return; }
-    let tries = 0;
-    const timer = setInterval(() => {
-      tries++;
-      if (window.Recharts) { setRechartsReady(true); clearInterval(timer); }
-      else if (tries > 50) { clearInterval(timer); } // 5초(100ms*50) 후 포기
-    }, 100);
-    return () => clearInterval(timer);
-  }, []);
-  const R = window.Recharts;
-  if (!R) {
-    return (
-      <div style={{ padding: 40, textAlign: "center", background: "#fef3c7", borderRadius: 12, color: "#92400e", border: "1px solid #fcd34d" }}>
-        <div style={{ fontSize: 30, marginBottom: 10 }}>⏳</div>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>차트 라이브러리 로드 중...</div>
-        <div style={{ fontSize: 12, marginBottom: 12 }}>잠시 후에도 그래프가 안 보이면 새로고침(Ctrl+Shift+R) 해주세요.</div>
-        <button onClick={() => window.location.reload()} style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: "#92400e", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer" }}>
-          🔄 새로고침
-        </button>
-      </div>
-    );
-  }
-  const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = R;
-  
-  // Scope 1 3년치
+  // ═ v28: Recharts 의존성 완전 제거, SVG 직접 렌더링 ═
   const s1Yearly = calcScope1Yearly(scopeData.s1);
   const s1Latest = s1Yearly[2] || 0;
   
-  // Scope 2 (현재 단일 연도, 최신 연도에 매핑)
-  // Scope 2 연도별 계산 (3년치 구조 + 호환)
   const calcScope2 = (s2, year) => {
-    // yearly_val_YYYY 우선 체크
     let val = parseFloat(s2["yearly_val_" + year]) || 0;
-    // 호환: yearly_val 단일 값은 최신 연도에만 매핑
-    if (!val && year === YEAR_LATEST) {
-      val = parseFloat(s2.yearly_val) || 0;
-    }
-    // 월별 데이터 합산
+    if (!val && year === YEAR_LATEST) val = parseFloat(s2.yearly_val) || 0;
     if (!val) {
       const monthly = s2["_monthly_" + year];
-      if (Array.isArray(monthly)) {
-        val = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
-      } else if (year === YEAR_LATEST) {
-        // 기존 구조: data[0..11]
+      if (Array.isArray(monthly)) val = monthly.reduce((a, b) => a + (parseFloat(b) || 0), 0);
+      else if (year === YEAR_LATEST) {
         let sum = 0;
         for (let i = 0; i < 12; i++) sum += parseFloat(s2[i]) || 0;
         if (sum > 0) val = sum;
@@ -4642,49 +4603,26 @@ function ClimateGraphs({ scopeData, blockData }) {
     const kwh = (s2.input_type === "원") ? val / 165 : val;
     return (kwh / 1000) * getPowerEF(year);
   };
-  
   const s2Yearly = REPORT_YEARS.map(y => calcScope2(scopeData.s2, y));
   const s2Latest = s2Yearly[2] || 0;
   
-  // Scope 3 연도별 계산 (3년치 객체 구조 + 단일 숫자 호환)
   const calcScope3 = (s3, year) => {
     return S3.reduce((sum, c) => {
       if (c.id === "c7") {
-        // 통근은 별도 구조 (최신 연도에만)
         if (year !== YEAR_LATEST) return sum;
         const d = s3.commute || {};
         return sum + ((d.people||0) * (d.distance||0) * 250 * 0.17 / 1000);
       }
       const raw = s3[c.id];
       let val = 0;
-      if (typeof raw === "object" && raw !== null) {
-        val = parseFloat(raw[year]) || 0;
-      } else if (year === YEAR_LATEST) {
-        val = parseFloat(raw) || 0;
-      }
+      if (typeof raw === "object" && raw !== null) val = parseFloat(raw[year]) || 0;
+      else if (year === YEAR_LATEST) val = parseFloat(raw) || 0;
       return sum + val * (c.ef || 0);
     }, 0);
   };
-  
   const s3Yearly = REPORT_YEARS.map(y => calcScope3(scopeData.s3, y));
   const s3Latest = s3Yearly[2] || 0;
   
-  // 1. 3년 추세 (Scope 1, 2, 3 모두 연도별)
-  const yearlyTrend = REPORT_YEARS.map((y, i) => ({
-    year: y + "",
-    "Scope 1": +(s1Yearly[i] || 0).toFixed(2),
-    "Scope 2": +(s2Yearly[i] || 0).toFixed(2),
-    "Scope 3": +(s3Yearly[i] || 0).toFixed(2),
-  }));
-  
-  // 2. 최신 연도 Scope 1·2·3 비교
-  const scopeData123 = [
-    { name: "Scope 1", value: +s1Latest.toFixed(2), fill: T.rose },
-    { name: "Scope 2", value: +s2Latest.toFixed(2), fill: T.amber },
-    { name: "Scope 3", value: +s3Latest.toFixed(2), fill: T.violet },
-  ];
-  
-  // 3. Scope 1 breakdown (최신 연도 기준)
   const stationaryTotal = SF.reduce((sum, f) => {
     const amt = getYearValue(scopeData.s1[f.id], YEAR_LATEST);
     if (!amt) return sum;
@@ -4702,11 +4640,6 @@ function ClimateGraphs({ scopeData, blockData }) {
     return sum + calc(baseAmt, f.ncv, f.co2, f.ch4, f.n2o).t;
   }, 0);
   
-  const s1Breakdown = [];
-  if (stationaryTotal > 0) s1Breakdown.push({ name: "고정연소", value: +stationaryTotal.toFixed(2), fill: T.blue });
-  if (mobileTotal > 0) s1Breakdown.push({ name: "이동연소", value: +mobileTotal.toFixed(2), fill: T.indigo });
-  
-  // 4. 감축 목표 진척
   const baseYearEmission = parseFloat(blockData["_102_sub"]?.["4_base_year_emission"]?.v) || (s1Latest + s2Latest);
   const currentEmission = s1Latest + s2Latest;
   const targetAnnual = parseFloat(blockData["_102_sub"]?.["4_target_short"]?.v) || 1.5;
@@ -4724,12 +4657,59 @@ function ClimateGraphs({ scopeData, blockData }) {
     );
   }
   
+  // ═ SVG 차트 파라미터 ═
+  const COL = {
+    s1: T.rose || "#ef4444",
+    s2: T.amber || "#f59e0b",
+    s3: T.violet || "#8b5cf6",
+    blue: T.blue || "#3b82f6",
+    indigo: T.indigo || "#6366f1"
+  };
+  
+  // 차트 1: 3년 추세 그룹 막대 (전체 폭)
+  const maxVal1 = Math.max(...s1Yearly, ...s2Yearly, ...s3Yearly, 1);
+  const niceMax1 = Math.ceil(maxVal1 * 1.15 / 100) * 100 || 100;
+  const W1 = 760, H1 = 280;
+  const M1 = { top: 20, right: 30, bottom: 60, left: 60 };
+  const PW1 = W1 - M1.left - M1.right;
+  const PH1 = H1 - M1.top - M1.bottom;
+  const groupW = PW1 / 3;
+  const barW = 34, barGap = 6;
+  
+  // 차트 2: 최신 연도 3개 막대
+  const maxVal2 = Math.max(s1Latest, s2Latest, s3Latest, 1);
+  const niceMax2 = Math.ceil(maxVal2 * 1.15 / 100) * 100 || 100;
+  const W2 = 340, H2 = 240;
+  const M2 = { top: 20, right: 15, bottom: 40, left: 55 };
+  const PW2 = W2 - M2.left - M2.right;
+  const PH2 = H2 - M2.top - M2.bottom;
+  const barW2 = 50;
+  
+  // 차트 3: Scope 1 내역 도넛
+  const s1Total = stationaryTotal + mobileTotal;
+  const statRatio = s1Total > 0 ? stationaryTotal / s1Total : 0;
+  const statAngle = statRatio * 360;
+  const W3 = 340, H3 = 240;
+  const c3cx = 110, c3cy = 120;
+  const c3rOut = 78, c3rIn = 48;
+  
+  const donutSlice = (cx, cy, rO, rI, sa, ea) => {
+    const s = (sa - 90) * Math.PI / 180;
+    const e = (ea - 90) * Math.PI / 180;
+    const large = (ea - sa) > 180 ? 1 : 0;
+    const x1 = cx + rO * Math.cos(s), y1 = cy + rO * Math.sin(s);
+    const x2 = cx + rO * Math.cos(e), y2 = cy + rO * Math.sin(e);
+    const x3 = cx + rI * Math.cos(e), y3 = cy + rI * Math.sin(e);
+    const x4 = cx + rI * Math.cos(s), y4 = cy + rI * Math.sin(s);
+    return `M ${x1} ${y1} A ${rO} ${rO} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${rI} ${rI} 0 ${large} 0 ${x4} ${y4} Z`;
+  };
+  
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      {/* 그래프 1: 3년 추세 막대그래프 (전체 폭) */}
+      {/* 그래프 1: 3년 추세 그룹 막대 */}
       <div style={{ gridColumn: "1 / -1", background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800 }}>📈 3년 배출량 추세 ({REPORT_YEARS[0]}~{REPORT_YEARS[2]})</h4>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, margin: 0 }}>📈 3년 배출량 추세 ({REPORT_YEARS[0]}~{REPORT_YEARS[2]})</h4>
           {s1Yearly[1] > 0 && s1Yearly[2] > 0 && (
             <span style={{
               fontSize: 11, fontWeight: 700,
@@ -4742,50 +4722,156 @@ function ClimateGraphs({ scopeData, blockData }) {
           )}
         </div>
         <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: tCO₂eq · GRI 102-5/6/7 · Scope 1·2·3 전체 3년치 추이</p>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={yearlyTrend}>
-            <CartesianGrid strokeDasharray="3 3" stroke={T.g200}/>
-            <XAxis dataKey="year" tick={{fontSize: 12}}/>
-            <YAxis tick={{fontSize: 12}}/>
-            <Tooltip/>
-            <Legend wrapperStyle={{fontSize: 12}}/>
-            <Bar dataKey="Scope 1" fill={T.rose} radius={[4, 4, 0, 0]}/>
-            <Bar dataKey="Scope 2" fill={T.amber} radius={[4, 4, 0, 0]}/>
-            <Bar dataKey="Scope 3" fill={T.violet} radius={[4, 4, 0, 0]}/>
-          </BarChart>
-        </ResponsiveContainer>
+        
+        <svg viewBox={`0 0 ${W1} ${H1}`} style={{ width: "100%", height: "auto", maxHeight: 320, display: "block" }}>
+          {Array.from({length: 6}).map((_, i) => {
+            const y = M1.top + (PH1 / 5) * i;
+            const val = niceMax1 * (1 - i / 5);
+            return (
+              <g key={`g1y${i}`}>
+                <line x1={M1.left} y1={y} x2={M1.left + PW1} y2={y} stroke={T.g200} strokeDasharray="2 4"/>
+                <text x={M1.left - 8} y={y + 4} textAnchor="end" fontSize="10" fill={T.g500}>{val.toFixed(0)}</text>
+              </g>
+            );
+          })}
+          <line x1={M1.left} y1={M1.top + PH1} x2={M1.left + PW1} y2={M1.top + PH1} stroke={T.g400} strokeWidth="1.5"/>
+          <text x={M1.left - 40} y={M1.top + PH1/2} fontSize="10" fill={T.g500} transform={`rotate(-90, ${M1.left - 40}, ${M1.top + PH1/2})`} textAnchor="middle">tCO₂eq</text>
+          
+          {REPORT_YEARS.map((year, i) => {
+            const gx = M1.left + groupW * i + groupW / 2;
+            const items = [
+              { v: s1Yearly[i] || 0, c: COL.s1, lbl: "Scope 1" },
+              { v: s2Yearly[i] || 0, c: COL.s2, lbl: "Scope 2" },
+              { v: s3Yearly[i] || 0, c: COL.s3, lbl: "Scope 3" }
+            ];
+            const total = items.length * barW + (items.length - 1) * barGap;
+            const sx = gx - total / 2;
+            return (
+              <g key={`g1y${year}`}>
+                {items.map((it, j) => {
+                  const h = it.v > 0 ? (it.v / niceMax1) * PH1 : 0;
+                  const bx = sx + j * (barW + barGap);
+                  const by = M1.top + PH1 - h;
+                  return (
+                    <g key={j}>
+                      <rect x={bx} y={by} width={barW} height={h} fill={it.c} rx="3">
+                        <title>{it.lbl} ({year}): {it.v.toFixed(2)} tCO₂eq</title>
+                      </rect>
+                      {it.v > 0.1 && h > 18 && (
+                        <text x={bx + barW/2} y={by - 4} textAnchor="middle" fontSize="10" fontWeight="700" fill={it.c}>
+                          {it.v.toFixed(1)}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                <text x={gx} y={M1.top + PH1 + 20} textAnchor="middle" fontSize="12" fontWeight="600" fill={T.g700}>{year}년</text>
+              </g>
+            );
+          })}
+          
+          <g transform={`translate(${M1.left + 10}, ${H1 - 18})`}>
+            {[
+              { lbl: "Scope 1 (직접배출)", c: COL.s1 },
+              { lbl: "Scope 2 (전력)", c: COL.s2 },
+              { lbl: "Scope 3 (공급망)", c: COL.s3 }
+            ].map((it, i) => (
+              <g key={i} transform={`translate(${i * 150}, 0)`}>
+                <rect width="11" height="11" rx="2" fill={it.c}/>
+                <text x="16" y="10" fontSize="11" fill={T.g700}>{it.lbl}</text>
+              </g>
+            ))}
+          </g>
+        </svg>
       </div>
       
-      {/* 그래프 2: 최신 연도 Scope 1·2·3 */}
+      {/* 그래프 2: 최신 연도 Scope 1/2/3 */}
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
         <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>{YEAR_LATEST}년 Scope 1·2·3</h4>
         <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>최신 연도 기준 · tCO₂eq</p>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={scopeData123}>
-            <CartesianGrid strokeDasharray="3 3" stroke={T.g200}/>
-            <XAxis dataKey="name" tick={{fontSize: 12}}/>
-            <YAxis tick={{fontSize: 12}}/>
-            <Tooltip/>
-            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-              {scopeData123.map((e, i) => <Cell key={i} fill={e.fill}/>)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        
+        <svg viewBox={`0 0 ${W2} ${H2}`} style={{ width: "100%", height: "auto", display: "block" }}>
+          {Array.from({length: 5}).map((_, i) => {
+            const y = M2.top + (PH2 / 4) * i;
+            const val = niceMax2 * (1 - i / 4);
+            return (
+              <g key={`g2y${i}`}>
+                <line x1={M2.left} y1={y} x2={M2.left + PW2} y2={y} stroke={T.g200} strokeDasharray="2 4"/>
+                <text x={M2.left - 6} y={y + 4} textAnchor="end" fontSize="10" fill={T.g500}>{val.toFixed(0)}</text>
+              </g>
+            );
+          })}
+          <line x1={M2.left} y1={M2.top + PH2} x2={M2.left + PW2} y2={M2.top + PH2} stroke={T.g400} strokeWidth="1.5"/>
+          
+          {[
+            { v: s1Latest, c: COL.s1, lbl: "Scope 1" },
+            { v: s2Latest, c: COL.s2, lbl: "Scope 2" },
+            { v: s3Latest, c: COL.s3, lbl: "Scope 3" }
+          ].map((it, i) => {
+            const slotW = PW2 / 3;
+            const bx = M2.left + slotW * i + slotW/2 - barW2/2;
+            const h = it.v > 0 ? (it.v / niceMax2) * PH2 : 0;
+            const by = M2.top + PH2 - h;
+            return (
+              <g key={i}>
+                <rect x={bx} y={by} width={barW2} height={h} fill={it.c} rx="4">
+                  <title>{it.lbl}: {it.v.toFixed(2)} tCO₂eq</title>
+                </rect>
+                {it.v > 0.1 && (
+                  <text x={bx + barW2/2} y={by - 5} textAnchor="middle" fontSize="11" fontWeight="700" fill={it.c}>
+                    {it.v.toFixed(1)}
+                  </text>
+                )}
+                <text x={M2.left + slotW * i + slotW/2} y={M2.top + PH2 + 20} textAnchor="middle" fontSize="11" fontWeight="600" fill={T.g700}>{it.lbl}</text>
+              </g>
+            );
+          })}
+        </svg>
       </div>
       
-      {/* 그래프 3: Scope 1 breakdown */}
+      {/* 그래프 3: Scope 1 내역 도넛 */}
       <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
         <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>Scope 1 배출원 ({YEAR_LATEST})</h4>
         <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>고정연소 vs 이동연소</p>
-        {s1Breakdown.length > 0 ? (
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={s1Breakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" label={(e) => `${e.name}: ${e.value}t`}>
-                {s1Breakdown.map((e, i) => <Cell key={i} fill={e.fill}/>)}
-              </Pie>
-              <Tooltip/>
-            </PieChart>
-          </ResponsiveContainer>
+        {s1Total > 0 ? (
+          <svg viewBox={`0 0 ${W3} ${H3}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            {statRatio > 0 && statRatio < 1 ? (
+              <>
+                <path d={donutSlice(c3cx, c3cy, c3rOut, c3rIn, 0, statAngle)} fill={COL.blue}>
+                  <title>고정연소: {stationaryTotal.toFixed(2)} tCO₂eq ({(statRatio*100).toFixed(1)}%)</title>
+                </path>
+                <path d={donutSlice(c3cx, c3cy, c3rOut, c3rIn, statAngle, 360)} fill={COL.indigo}>
+                  <title>이동연소: {mobileTotal.toFixed(2)} tCO₂eq ({((1-statRatio)*100).toFixed(1)}%)</title>
+                </path>
+              </>
+            ) : (
+              <>
+                <circle cx={c3cx} cy={c3cy} r={c3rOut} fill={statRatio === 1 ? COL.blue : COL.indigo}/>
+                <circle cx={c3cx} cy={c3cy} r={c3rIn} fill={T.white}/>
+              </>
+            )}
+            
+            <text x={c3cx} y={c3cy - 6} textAnchor="middle" fontSize="10" fill={T.g500}>총 Scope 1</text>
+            <text x={c3cx} y={c3cy + 12} textAnchor="middle" fontSize="15" fontWeight="700" fill={T.g800}>{s1Total.toFixed(1)}</text>
+            <text x={c3cx} y={c3cy + 26} textAnchor="middle" fontSize="9" fill={T.g400}>tCO₂eq</text>
+            
+            <g transform="translate(225, 70)">
+              {stationaryTotal > 0 && (
+                <g>
+                  <rect width="12" height="12" fill={COL.blue} rx="2"/>
+                  <text x="18" y="10" fontSize="11" fontWeight="600" fill={T.g700}>고정연소</text>
+                  <text x="18" y="26" fontSize="10" fill={T.g500}>{stationaryTotal.toFixed(1)} t ({(statRatio*100).toFixed(0)}%)</text>
+                </g>
+              )}
+              {mobileTotal > 0 && (
+                <g transform="translate(0, 55)">
+                  <rect width="12" height="12" fill={COL.indigo} rx="2"/>
+                  <text x="18" y="10" fontSize="11" fontWeight="600" fill={T.g700}>이동연소</text>
+                  <text x="18" y="26" fontSize="10" fill={T.g500}>{mobileTotal.toFixed(1)} t ({((1-statRatio)*100).toFixed(0)}%)</text>
+                </g>
+              )}
+            </g>
+          </svg>
         ) : (
           <div style={{ padding: 40, textAlign: "center", color: T.g400, fontSize: 12 }}>Scope 1 데이터 없음</div>
         )}
