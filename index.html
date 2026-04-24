@@ -8,8 +8,9 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.min.js"></script>
+<!-- ═ v27: prop-types는 Recharts의 의존성이므로 반드시 먼저 로드 ═ -->
 <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -4586,8 +4587,31 @@ function SubField({ field, value, onChange, disabled }) {
 
 // 기후변화 대응 대시보드 그래프 (Recharts)
 function ClimateGraphs({ scopeData, blockData }) {
+  // ═ v27: Recharts 로드 감지 (미로드 시 재시도 + 명확한 UI) ═
+  const [rechartsReady, setRechartsReady] = useState(!!window.Recharts);
+  React.useEffect(() => {
+    if (window.Recharts) { setRechartsReady(true); return; }
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      if (window.Recharts) { setRechartsReady(true); clearInterval(timer); }
+      else if (tries > 50) { clearInterval(timer); } // 5초(100ms*50) 후 포기
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
   const R = window.Recharts;
-  if (!R) return null;
+  if (!R) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", background: "#fef3c7", borderRadius: 12, color: "#92400e", border: "1px solid #fcd34d" }}>
+        <div style={{ fontSize: 30, marginBottom: 10 }}>⏳</div>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>차트 라이브러리 로드 중...</div>
+        <div style={{ fontSize: 12, marginBottom: 12 }}>잠시 후에도 그래프가 안 보이면 새로고침(Ctrl+Shift+R) 해주세요.</div>
+        <button onClick={() => window.location.reload()} style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, background: "#92400e", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer" }}>
+          🔄 새로고침
+        </button>
+      </div>
+    );
+  }
   const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = R;
   
   // Scope 1 3년치
