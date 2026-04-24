@@ -7114,7 +7114,13 @@ function App() {
       const vms = await sbFetch("block_vsme_mapping?select=block_id,vsme_code");
       if (vms) { const m = {}; vms.forEach(v => { (m[v.block_id] = m[v.block_id] || []).push(v.vsme_code); }); setVsmeMap(m); }
       const bds = await sbFetch("block_data?select=*");
-      if (bds) { const m = {}; bds.forEach(d => { m[d.block_id] = { content_text: d.content_text, content_json: d.content_json, status: d.status }; }); setBlockDataState(m); }
+      if (bds) { 
+        const m = {}; 
+        bds.forEach(d => { m[d.block_id] = { content_text: d.content_text, content_json: d.content_json, status: d.status }; }); 
+        // ═ v25.1: Supabase 응답을 localStorage 복구분과 병합 (덮어쓰기 X) ═
+        // Supabase에 없는 materiality_v2·_102_sub·_103_meta 같은 로컬 전용 키는 localStorage에서 유지
+        setBlockDataState(prev => ({ ...prev, ...m })); 
+      }
     } catch(e) { console.log("Load error:", e); }
     setLoaded(true);
   }, [sbFetch]);
@@ -7959,11 +7965,14 @@ function ValueChainPage({ meta, updateMeta }) {
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>🔗 중요성평가 · 1단계: 가치사슬 매핑</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>🔗 중요성평가 · 1단계: 가치사슬 매핑</h2>
+          {checkedCount > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#10b981", padding: "3px 10px", borderRadius: 4 }}>✅ 자동저장됨</span>}
+        </div>
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>
           당사의 사업 활동이 영향을 미치는 가치사슬 단계를 체크하세요. <strong>GRI 3의 필수 사전 단계</strong>입니다.
         </p>
-        <p style={{ fontSize: 12, color: "#9ca3af" }}>선택: {checkedCount} / {VALUE_CHAIN_STAGES.length}</p>
+        <p style={{ fontSize: 12, color: "#9ca3af" }}>선택: {checkedCount} / {VALUE_CHAIN_STAGES.length} · 체크하시면 즉시 저장됩니다 (수동 저장 버튼 불필요)</p>
       </div>
 
       <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 12, color: "#1e40af" }}>
@@ -8018,12 +8027,15 @@ function TopicsPage({ responses, updateResponse }) {
   return (
     <div style={{ maxWidth: 980 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>📋 중요성평가 · 2단계: 주제 진단</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>📋 중요성평가 · 2단계: 주제 진단</h2>
+          {checkedCount > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#10b981", padding: "3px 10px", borderRadius: 4 }}>✅ 자동저장됨</span>}
+        </div>
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>
           우리 회사에 해당하는 ESG 주제를 선택하세요. <strong>"해당 없음"</strong>으로 표시한 주제는 평가에서 제외됩니다.
         </p>
         <p style={{ fontSize: 12, color: "#9ca3af" }}>
-          GRI 3 공식 절차 · VSME "if applicable" 원칙 적용 · 응답: {checkedCount} / {totalCount}
+          GRI 3 공식 절차 · VSME "if applicable" 원칙 적용 · 응답: {checkedCount} / {totalCount} · 클릭 즉시 저장
         </p>
       </div>
 
@@ -8102,11 +8114,14 @@ function AssessPage({ responses, updateResponse, clearResponse }) {
   return (
     <div style={{ maxWidth: 980 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>⚖️ 중요성평가 · 3단계: 이중 평가</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>⚖️ 중요성평가 · 3단계: 이중 평가</h2>
+          {evaluated > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#10b981", padding: "3px 10px", borderRadius: 4 }}>✅ 자동저장됨 ({evaluated}/{applicable.length})</span>}
+        </div>
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>
           <strong>GRI 3 공식 방법</strong>에 따라 Scale·Scope·Irremediable·Likelihood·Financial 5요소로 평가합니다.
         </p>
-        <p style={{ fontSize: 12, color: "#9ca3af" }}>진행: {evaluated} / {applicable.length} · 주제를 클릭하면 펼쳐집니다</p>
+        <p style={{ fontSize: 12, color: "#9ca3af" }}>진행: {evaluated} / {applicable.length} · 클릭 즉시 저장 · 🔄 재평가 버튼으로 수정 가능</p>
       </div>
 
       <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 12, color: "#1e40af" }}>
@@ -8246,8 +8261,11 @@ function AnomalyPage({ responses }) {
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>⚠️ 중요성평가 · 4단계: 이상치 리포트</h2>
-        <p style={{ fontSize: 13, color: "#6b7280" }}>평가 결과에서 재검토가 필요한 부분을 자동으로 식별합니다.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>⚠️ 중요성평가 · 4단계: 이상치 리포트</h2>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#3b82f6", padding: "3px 10px", borderRadius: 4 }}>🔄 실시간 자동생성</span>
+        </div>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>평가 결과에서 재검토가 필요한 부분을 자동으로 식별합니다. 3단계 평가를 수정하면 즉시 반영됩니다.</p>
       </div>
 
       {anomalies.length === 0 ? (
@@ -8313,8 +8331,11 @@ function MatrixPage({ responses, meta, updateMeta }) {
   return (
     <div style={{ maxWidth: 980 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>📊 중요성평가 · 5단계: 결과 매트릭스</h2>
-        <p style={{ fontSize: 13, color: "#6b7280" }}>평가된 {result.all.length}개 주제의 영향 × 재무 분포</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>📊 중요성평가 · 5단계: 결과 매트릭스</h2>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#10b981", padding: "3px 10px", borderRadius: 4 }}>✅ 자동저장됨</span>
+        </div>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>평가된 {result.all.length}개 주제의 영향 × 재무 분포 · Threshold 변경 시 즉시 저장</p>
       </div>
 
       {/* Threshold 선택 */}
@@ -8419,8 +8440,14 @@ function ConfirmPage({ responses, data, setBlockData, MAT_KEY, meta }) {
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>✅ 중요성평가 · 6단계: 확정</h2>
-        <p style={{ fontSize: 13, color: "#6b7280" }}>아래 {result.core.length}개 주제가 보고서 필수 공시 대상으로 확정됩니다.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>✅ 중요성평가 · 6단계: 확정</h2>
+          {confirmed 
+            ? <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#059669", padding: "3px 10px", borderRadius: 4 }}>🔒 확정 완료 · 자동저장됨</span>
+            : <span style={{ fontSize: 11, fontWeight: 700, color: "#92400e", background: "#fef3c7", padding: "3px 10px", borderRadius: 4, border: "1px solid #fcd34d" }}>확정 대기</span>
+          }
+        </div>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>아래 {result.core.length}개 주제가 보고서 필수 공시 대상으로 확정됩니다. 확정 후에도 "재오픈"으로 수정 가능 (이력 보존).</p>
       </div>
 
       {highAnomalies > 0 && (
@@ -8517,8 +8544,12 @@ ${paragraphs.manageText}${stakeholderSection}
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 6 }}>📝 중요성평가 · 7단계: 보고서 생성</h2>
-        <p style={{ fontSize: 13, color: "#6b7280" }}>지속가능경영 보고서의 중요성평가 섹션 초안입니다.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0 }}>📝 중요성평가 · 7단계: 보고서 생성</h2>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#3b82f6", padding: "3px 10px", borderRadius: 4 }}>🔄 실시간 자동생성</span>
+          {stakeholderNotes && <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "#10b981", padding: "3px 10px", borderRadius: 4 }}>✅ 이해관계자 의견 저장됨</span>}
+        </div>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>지속가능경영 보고서의 중요성평가 섹션 초안입니다. 3~6단계 수정하면 즉시 반영됩니다.</p>
       </div>
 
       <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 16, marginBottom: 16 }}>
