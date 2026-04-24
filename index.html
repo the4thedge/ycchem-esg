@@ -31,15 +31,34 @@ const DEPTS = {
   purch: { name: "구매/SCM", color: "#f97316" },
 };
 
+// ═══════════════════════════════════════════
+// 계정 구조 (v29) · 3-Tier 권한 분리
+// staff      : 담당자 (본인 부서만)
+// manager    : 회사 ESG 총괄 (전 부서 입력 접근 · 결과물 ❌)
+// consultant : 전문 수행사 (전체 + 실시간 그래프·보고서·이중중대성)
+// ═══════════════════════════════════════════
 const USERS = {
-  env: { id: "env", name: "김환경", dept: "env", pw: "1234" },
-  fac: { id: "fac", name: "이시설", dept: "fac", pw: "1234" },
-  admin: { id: "admin", name: "박총무", dept: "admin", pw: "1234" },
-  mgmt: { id: "mgmt", name: "최기획", dept: "mgmt", pw: "1234" },
-  prod: { id: "prod", name: "정생산", dept: "prod", pw: "1234" },
-  purch: { id: "purch", name: "한구매", dept: "purch", pw: "1234" },
-  super: { id: "super", name: "곽종수", dept: "all", pw: "admin" },
+  // 담당자 (부서별)
+  env:   { id: "env",   name: "김환경", dept: "env",   pw: "1234", role: "staff" },
+  fac:   { id: "fac",   name: "이시설", dept: "fac",   pw: "1234", role: "staff" },
+  admin: { id: "admin", name: "박총무", dept: "admin", pw: "1234", role: "staff" },
+  mgmt:  { id: "mgmt",  name: "최기획", dept: "mgmt",  pw: "1234", role: "staff" },
+  prod:  { id: "prod",  name: "정생산", dept: "prod",  pw: "1234", role: "staff" },
+  purch: { id: "purch", name: "한구매", dept: "purch", pw: "1234", role: "staff" },
+  // 회사 ESG 총괄 관리자 (신규)
+  manager:    { id: "manager",    name: "ESG 총괄",    dept: "all", pw: "manager", role: "manager" },
+  // 전문 수행사 컨설턴트 (기존 super 리네임)
+  consultant: { id: "consultant", name: "이크레더블",  dept: "all", pw: "admin",   role: "consultant" },
+  // 하위 호환 (기존 super 로그인도 consultant로 유효)
+  super: { id: "consultant", name: "이크레더블", dept: "all", pw: "admin", role: "consultant" },
 };
+
+// 권한 체크 헬퍼
+const isConsultant = (u) => u && u.role === "consultant";
+const isManager    = (u) => u && u.role === "manager";
+const isStaff      = (u) => u && u.role === "staff";
+const canSeeResults      = (u) => isConsultant(u);           // 실시간 그래프·보고서·이중중대성
+const canSeeAllDepts     = (u) => isConsultant(u) || isManager(u); // 타 부서 입력 열람·수정
 
 // ═══════════════════════════════════════════
 // 법정 배출계수 · 순발열량 · GWP
@@ -283,9 +302,15 @@ function Login({ onLogin }) {
                 </button>
               ))}
             </div>
-            <button onClick={() => { setSel("super"); setErr(""); setPw(""); }}
-              style={{ width: "100%", marginTop: 6, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "super" ? T.g900 : T.g200}`, background: sel === "super" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "super" ? 600 : 400, color: sel === "super" ? T.g900 : T.g500 }}>
-              관리자 (전체 조회)
+            <button onClick={() => { setSel("manager"); setErr(""); setPw(""); }}
+              style={{ width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "manager" ? T.g900 : T.g200}`, background: sel === "manager" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "manager" ? 600 : 400, color: sel === "manager" ? T.g900 : T.g500, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>🏢 회사 ESG 총괄 관리자</span>
+              <span style={{ fontSize: 10, color: T.g400 }}>전 부서 입력 열람·수정</span>
+            </button>
+            <button onClick={() => { setSel("consultant"); setErr(""); setPw(""); }}
+              style={{ width: "100%", marginTop: 6, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "consultant" ? T.g900 : T.g200}`, background: sel === "consultant" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "consultant" ? 600 : 400, color: sel === "consultant" ? T.g900 : T.g500, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>🎯 전문 수행사 (컨설턴트)</span>
+              <span style={{ fontSize: 10, color: T.g400 }}>보고서·이중중대성·실시간 그래프</span>
             </button>
           </div>
           {sel && (
@@ -300,7 +325,7 @@ function Login({ onLogin }) {
                 style={{ width: "100%", marginTop: 12, padding: "11px", borderRadius: 8, border: "none", background: T.g900, color: T.white, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                 로그인
               </button>
-              <p style={{ fontSize: 11, color: T.g400, textAlign: "center", marginTop: 16 }}>테스트: 1234 / 관리자: admin</p>
+              <p style={{ fontSize: 11, color: T.g400, textAlign: "center", marginTop: 16 }}>담당자 1234 / 관리자 manager / 컨설턴트 admin</p>
             </div>
           )}
         </div>
@@ -6965,7 +6990,173 @@ function ReportPreview({ scopeData, blockData }) {
   );
 }
 
-function Dash({ scopeData, blockData, blocks, standards }) {
+// ═══════════════════════════════════════════
+// v29: 권한 없음 안내 컴포넌트 (담당자·관리자가 컨설턴트 전용 기능 접근 시)
+// ═══════════════════════════════════════════
+function NoAccessNotice({ feature, user }) {
+  return (
+    <div style={{ maxWidth: 680, margin: "40px auto", padding: 40, background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", textAlign: "center" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 10 }}>{feature} · 컨설턴트 전용 영역</h2>
+      <p style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.7, marginBottom: 18 }}>
+        이 기능은 <strong>전문 수행사(컨설턴트)</strong> 계정에서만 열립니다.<br/>
+        플랫폼은 데이터 수집·정리까지를 담당하고,<br/>
+        <strong>결과물(보고서·이중중대성 분석·시각화)은 전문가가 작성·검증합니다.</strong>
+      </p>
+      <div style={{ display: "inline-block", padding: "10px 16px", background: "#f3f4f6", borderRadius: 6, fontSize: 12, color: "#6b7280" }}>
+        현재 로그인: <strong style={{ color: "#111827" }}>{user.name}</strong> · {user.role === "staff" ? "담당자" : user.role === "manager" ? "ESG 총괄 관리자" : user.role}
+      </div>
+      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 20 }}>
+        결과물이 필요하시면 전문 수행사(이크레더블)에 문의해주세요.
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+// v29: 담당자 전용 간단 대시보드 (심플 버전)
+// ═══════════════════════════════════════════
+function StaffDashboard({ user, scopeData, blockData, blocks, standards }) {
+  const myDept = user.dept;
+  const deptInfo = DEPTS[myDept] || { name: myDept, color: "#6b7280" };
+  const deptName = deptInfo.name.split(" · ")[0];
+  
+  // 내 부서 담당 블록들
+  const myBlocks = blocks.filter(b => b.default_dept === myDept);
+  const myDone = myBlocks.filter(isDone).length;
+  const myPct = myBlocks.length ? Math.round(myDone / myBlocks.length * 100) : 0;
+  
+  // 내 부서 담당 GRI 표준
+  const myStandards = standards.filter(s => 
+    blocks.some(b => b.gri_code === s.code && b.default_dept === myDept)
+  );
+  
+  // 본인 부서 관련 Scope 입력값 (env/fac만 Scope 1·2 표시)
+  const showScope1 = myDept === "env" || myDept === "fac";
+  const s1Yearly = showScope1 ? calcScope1Yearly(scopeData.s1) : [0, 0, 0];
+  
+  return (
+    <div>
+      {/* 헤더 */}
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>
+          안녕하세요, {user.name}님 👋
+        </h2>
+        <p style={{ fontSize: 14, color: "#6b7280", marginTop: 4 }}>
+          {deptName} · {YEAR_LATEST}년 ESG 데이터 입력 현황
+        </p>
+      </div>
+      
+      {/* 내 진행률 카드 */}
+      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", padding: 28, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 4 }}>내 담당 항목</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: "#111827", fontFeatureSettings: "'tnum'" }}>
+              {myDone} <span style={{ fontSize: 16, color: "#6b7280", fontWeight: 500 }}>/ {myBlocks.length} 완료</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 36, fontWeight: 700, color: deptInfo.color, fontFeatureSettings: "'tnum'" }}>{myPct}%</div>
+        </div>
+        <div style={{ background: "#f3f4f6", borderRadius: 999, height: 10, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${myPct}%`, background: deptInfo.color, borderRadius: 999, transition: "width 0.4s" }}/>
+        </div>
+        <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 12 }}>
+          💡 왼쪽 메뉴에서 GRI 항목을 선택해 입력·수정할 수 있습니다. 저장 버튼 없이 <strong>클릭 즉시 자동 저장</strong>됩니다.
+        </p>
+      </div>
+      
+      {/* 내가 입력한 Scope 요약 (환경·시설 담당자만) */}
+      {showScope1 && (s1Yearly[0] > 0 || s1Yearly[1] > 0 || s1Yearly[2] > 0) && (
+        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", padding: 28, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 6 }}>📊 내가 입력한 Scope 1 직접배출 · 3년치</div>
+          <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 20 }}>고정연소 + 이동연소 합계 · tCO₂eq</p>
+          
+          {/* 간단 SVG 막대그래프 */}
+          <svg viewBox="0 0 600 160" style={{ width: "100%", height: "auto", display: "block" }}>
+            {(() => {
+              const maxV = Math.max(...s1Yearly, 1);
+              const niceMax = Math.ceil(maxV * 1.15 / 10) * 10 || 10;
+              const PH = 110, barW = 90, gap = 60;
+              const startX = 80;
+              return <>
+                {/* Y축 그리드 */}
+                {[0, 0.5, 1].map((r, i) => {
+                  const y = 20 + (PH * (1 - r));
+                  return (
+                    <g key={i}>
+                      <line x1={70} y1={y} x2={560} y2={y} stroke="#e5e7eb" strokeDasharray="2 4"/>
+                      <text x={62} y={y + 4} textAnchor="end" fontSize="10" fill="#9ca3af">{(niceMax * r).toFixed(0)}</text>
+                    </g>
+                  );
+                })}
+                {REPORT_YEARS.map((year, i) => {
+                  const v = s1Yearly[i] || 0;
+                  const h = v > 0 ? (v / niceMax) * PH : 0;
+                  const x = startX + i * (barW + gap);
+                  const y = 20 + PH - h;
+                  return (
+                    <g key={year}>
+                      <rect x={x} y={y} width={barW} height={h} fill={deptInfo.color} rx="4">
+                        <title>{year}년: {v.toFixed(2)} tCO₂eq</title>
+                      </rect>
+                      {v > 0.01 && (
+                        <text x={x + barW/2} y={y - 6} textAnchor="middle" fontSize="12" fontWeight="700" fill={deptInfo.color}>
+                          {v.toFixed(1)}
+                        </text>
+                      )}
+                      <text x={x + barW/2} y={150} textAnchor="middle" fontSize="12" fontWeight="600" fill="#6b7280">{year}년</text>
+                    </g>
+                  );
+                })}
+              </>;
+            })()}
+          </svg>
+        </div>
+      )}
+      
+      {/* GRI 표준별 나의 진행률 */}
+      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", padding: 28 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 16 }}>GRI 표준별 내 담당 진행률</div>
+        {myStandards.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#9ca3af", textAlign: "center", padding: "30px 0" }}>
+            현재 {deptName}에 할당된 GRI 항목이 없습니다.
+          </p>
+        ) : (
+          myStandards.map(s => {
+            const sMyBlocks = blocks.filter(b => b.gri_code === s.code && b.default_dept === myDept);
+            const sDone = sMyBlocks.filter(isDone).length;
+            const p = sMyBlocks.length ? Math.round(sDone / sMyBlocks.length * 100) : 0;
+            return (
+              <div key={s.code} style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: "#374151", width: 240 }}>{s.title}</span>
+                <div style={{ flex: 1, background: "#f3f4f6", borderRadius: 999, height: 6, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${p}%`, background: deptInfo.color, borderRadius: 999 }}/>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", width: 70, textAlign: "right", fontFeatureSettings: "'tnum'" }}>{sDone}/{sMyBlocks.length}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+      
+      {/* 안내 박스 */}
+      <div style={{ marginTop: 24, padding: 16, background: "#f9fafb", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: 0 }}>
+          💡 <strong>담당자 영역입니다.</strong> 본인 부서가 담당하는 항목만 입력·조회할 수 있습니다.<br/>
+          보고서 미리보기·이중중대성평가 등 <strong>결과물</strong>은 전문 수행사(컨설턴트) 계정에서 생성됩니다.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Dash({ scopeData, blockData, blocks, standards, user }) {
+  // v29: 담당자는 별도 간단 대시보드로
+  if (user && user.role === "staff") {
+    return <StaffDashboard user={user} scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards}/>;
+  }
+  const isCons = user && user.role === "consultant";
   // Scope 1: calcScope1Total이 이미 연간+월별 모두 처리 (v25 중복 합산 버그 수정)
   let s1total = calcScope1Total(scopeData.s1, YEAR_LATEST);
   
@@ -7069,8 +7260,8 @@ function Dash({ scopeData, blockData, blocks, standards }) {
       </div>
     </div>
 
-    {/* 🎯 이중중대성평가 현황 카드 (v23) */}
-    {(() => {
+    {/* 🎯 이중중대성평가 현황 카드 · 컨설턴트 전용 (v29) */}
+    {isCons && (() => {
       const matData = (blockData["materiality_v2"] && blockData["materiality_v2"].content_json) || {};
       const responses = matData.responses || {};
       const meta = matData.meta || {};
@@ -7338,12 +7529,15 @@ function App() {
             style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "dash" ? T.g100 : "transparent", color: pg === "dash" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "dash" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2 }}>
             대시보드
           </button>
-          <button onClick={() => setPg("report")}
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "report" ? T.g100 : "transparent", color: pg === "report" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "report" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>📄 보고서 미리보기</span>
-            <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>신규</span>
-          </button>
+          {canSeeResults(user) && (
+            <button onClick={() => setPg("report")}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "report" ? T.g100 : "transparent", color: pg === "report" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "report" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>📄 보고서 미리보기</span>
+              <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>컨설턴트</span>
+            </button>
+          )}
 
+          {canSeeResults(user) && (<>
           <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px" }}>중요성평가</p>
           {(() => {
             const MAT_SUBS = [
@@ -7396,6 +7590,7 @@ function App() {
               </div>
             );
           })()}
+          </>)}
 
           <p style={{ fontSize: 10, fontWeight: 700, color: T.g400, letterSpacing: "0.08em", padding: "14px 10px 4px" }}>GRI 표준</p>
           {(() => {
@@ -7476,7 +7671,11 @@ function App() {
                         </button>
                         {isActive && (
                           <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.g200}`, marginBottom: 6 }}>
-                            {s.subItems.map(sub => {
+                            {s.subItems.filter(sub => {
+                              // v29: 실시간 대시보드는 컨설턴트만 노출
+                              if (sub.key === "dashboard" && !canSeeResults(user)) return false;
+                              return true;
+                            }).map(sub => {
                               const subPgKey = "gri_" + s.code + "_" + sub.key;
                               const isSubActive = pg === subPgKey;
                               return (
@@ -7524,23 +7723,29 @@ function App() {
       </div>
 
       <div style={{ flex: 1, padding: "32px 40px", overflowY: "auto", maxHeight: "100vh" }}>
-        {pg === "dash" && <Dash scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards}/>}
-        {pg === "report" && <ReportPreview scopeData={scopeData} blockData={blockData}/>}
+        {pg === "dash" && <Dash scopeData={scopeData} blockData={blockData} blocks={blocks} standards={standards} user={user}/>}
+        {pg === "report" && (canSeeResults(user) 
+          ? <ReportPreview scopeData={scopeData} blockData={blockData}/>
+          : <NoAccessNotice feature="보고서 미리보기" user={user}/>)}
         
-        {/* 🎯 이중중대성평가 (v21) */}
-        {pg.startsWith("materiality_") && (
-          <MaterialityPanel subPage={pg.replace("materiality_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
-        )}
+        {/* 🎯 이중중대성평가 · 컨설턴트 전용 */}
+        {pg.startsWith("materiality_") && (canSeeResults(user)
+          ? <MaterialityPanel subPage={pg.replace("materiality_", "")} blockData={blockData} setBlockData={setBlockData} ud={user.dept} isAdmin={user.dept === "all"}/>
+          : <NoAccessNotice feature="이중중대성평가" user={user}/>)}
         
         {/* GRI 102 — 기존 BlockPanel 사용 */}
         {pg.startsWith("gri_102_") && (() => {
           const subPage = pg.replace("gri_102_", "");
+          // v29: 실시간 대시보드는 컨설턴트만
+          if (subPage === "dashboard" && !canSeeResults(user)) {
+            return <NoAccessNotice feature="실시간 대시보드 그래프" user={user}/>;
+          }
           const standard102 = standards.find(s => s.code === "102") || { code: "102", category: "환경", title: "GRI 102: 기후변화 2025", description: "" };
           const sBlocks = blocks.filter(b => b.gri_code === "102");
           return <BlockPanel key={"102_" + subPage} standard={standard102} blocks={sBlocks} blockData={blockData} setBlockData={setBlockData}
             scopeData={scopeData} setS1={setS1} setS2={setS2} setS3={setS3}
             ud={user.dept} isAdmin={user.dept === "all"} griMap={griMap} vsmeMap={vsmeMap}
-            subPage={subPage}/>;
+            subPage={subPage} user={user}/>;
         })()}
         
         {/* GRI 103 에너지 */}
