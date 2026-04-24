@@ -303,14 +303,12 @@ function Login({ onLogin }) {
               ))}
             </div>
             <button onClick={() => { setSel("manager"); setErr(""); setPw(""); }}
-              style={{ width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "manager" ? T.g900 : T.g200}`, background: sel === "manager" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "manager" ? 600 : 400, color: sel === "manager" ? T.g900 : T.g500, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>🏢 회사 ESG 총괄 관리자</span>
-              <span style={{ fontSize: 10, color: T.g400 }}>전 부서 입력 열람·수정</span>
+              style={{ width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "manager" ? T.g900 : T.g200}`, background: sel === "manager" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "manager" ? 600 : 400, color: sel === "manager" ? T.g900 : T.g500, textAlign: "center" }}>
+              🏢 회사 ESG 총괄 관리자
             </button>
             <button onClick={() => { setSel("consultant"); setErr(""); setPw(""); }}
-              style={{ width: "100%", marginTop: 6, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "consultant" ? T.g900 : T.g200}`, background: sel === "consultant" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "consultant" ? 600 : 400, color: sel === "consultant" ? T.g900 : T.g500, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>🎯 전문 수행사 (컨설턴트)</span>
-              <span style={{ fontSize: 10, color: T.g400 }}>보고서·이중중대성·실시간 그래프</span>
+              style={{ width: "100%", marginTop: 6, padding: "10px", borderRadius: 8, border: `1px solid ${sel === "consultant" ? T.g900 : T.g200}`, background: sel === "consultant" ? T.g50 : T.white, cursor: "pointer", fontSize: 13, fontWeight: sel === "consultant" ? 600 : 400, color: sel === "consultant" ? T.g900 : T.g500, textAlign: "center" }}>
+              🎯 전문 수행사 (컨설턴트)
             </button>
           </div>
           {sel && (
@@ -325,7 +323,7 @@ function Login({ onLogin }) {
                 style={{ width: "100%", marginTop: 12, padding: "11px", borderRadius: 8, border: "none", background: T.g900, color: T.white, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                 로그인
               </button>
-              <p style={{ fontSize: 11, color: T.g400, textAlign: "center", marginTop: 16 }}>담당자 1234 / 관리자 manager / 컨설턴트 admin</p>
+              <p style={{ fontSize: 11, color: T.g400, textAlign: "center", marginTop: 16 }}>문의: 담당자에게 비밀번호 확인</p>
             </div>
           )}
         </div>
