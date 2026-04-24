@@ -5346,6 +5346,246 @@ function GRI103Panel({ subPage, scopeData, blockData, setBlockData, ud, isAdmin 
     </div>
   );
   
+  if (subPage === "dashboard") {
+    // ═ v30: 에너지 실시간 대시보드 · 보고서 작성 참조용 ═
+    const latest = energyByYear[2];
+    const prev = energyByYear[1];
+    const oldest = energyByYear[0];
+    const changePct = prev.total > 0 ? ((latest.total - prev.total) / prev.total * 100) : 0;
+    const totalChangePct = oldest.total > 0 ? ((latest.total - oldest.total) / oldest.total * 100) : 0;
+    const renewablePct = latest.total > 0 ? (latest.renewable / latest.total * 100) : 0;
+    const maxTotal = Math.max(...energyByYear.map(e => e.total), 1);
+    const niceMax = Math.ceil(maxTotal * 1.15 / 100) * 100 || 100;
+    const COL = { fuel: "#f59e0b", elec: "#8b5cf6", renew: "#10b981" };
+
+    // 차트 1: 3년 에너지 구성 스택 막대
+    const W1 = 760, H1 = 280;
+    const M1 = { top: 20, right: 30, bottom: 60, left: 60 };
+    const PW1 = W1 - M1.left - M1.right;
+    const PH1 = H1 - M1.top - M1.bottom;
+    const groupW = PW1 / 3;
+    const barW1 = 80;
+
+    // 차트 2: 최신 연도 구성 도넛
+    const W2 = 340, H2 = 240;
+    const c2cx = 110, c2cy = 120;
+    const c2rOut = 78, c2rIn = 48;
+    const fuelAng = latest.total > 0 ? (latest.fuel / latest.total) * 360 : 0;
+    const elecAng = latest.total > 0 ? (latest.electricity / latest.total) * 360 : 0;
+    const renewAng = latest.total > 0 ? (latest.renewable / latest.total) * 360 : 0;
+    const donutSlice = (cx, cy, rO, rI, sa, ea) => {
+      const s = (sa - 90) * Math.PI / 180;
+      const e = (ea - 90) * Math.PI / 180;
+      const large = (ea - sa) > 180 ? 1 : 0;
+      const x1 = cx + rO * Math.cos(s), y1 = cy + rO * Math.sin(s);
+      const x2 = cx + rO * Math.cos(e), y2 = cy + rO * Math.sin(e);
+      const x3 = cx + rI * Math.cos(e), y3 = cy + rI * Math.sin(e);
+      const x4 = cx + rI * Math.cos(s), y4 = cy + rI * Math.sin(s);
+      return `M ${x1} ${y1} A ${rO} ${rO} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${rI} ${rI} 0 ${large} 0 ${x4} ${y4} Z`;
+    };
+
+    if (latest.total < 0.01) {
+      return (
+        <div>
+          <Header icon="📈" sub="에너지 소비량 실시간 대시보드 · 보고서 작성 참조용"/>
+          <div style={{ padding: 40, textAlign: "center", background: T.g50, borderRadius: 12, color: T.g500 }}>
+            💡 에너지 데이터를 입력하면 실시간 그래프가 표시됩니다. (GRI 102 배출량 + 103 에너지 소비량 입력)
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <Header icon="📈" sub="에너지 소비량 실시간 대시보드 · 보고서 작성 참조용 시각화"/>
+        
+        {/* KPI 4개 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+          <div style={{ background: T.blueBg, border: `1px solid ${T.blue}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>총 에너지 소비 ({YEAR_LATEST})</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>{latest.total.toFixed(1)}</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>GJ</p>
+          </div>
+          <div style={{ background: prev.total > 0 && latest.total < prev.total ? T.emeraldBg : T.roseBg, border: `1px solid ${prev.total > 0 && latest.total < prev.total ? T.emerald : T.rose}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>전년 대비</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: prev.total > 0 && latest.total < prev.total ? T.emerald : T.rose, fontFeatureSettings: "'tnum'" }}>
+              {prev.total > 0 ? (changePct >= 0 ? "▲" : "▼") + " " + Math.abs(changePct).toFixed(1) + "%" : "—"}
+            </p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>{prev.year} → {latest.year}</p>
+          </div>
+          <div style={{ background: T.emeraldBg, border: `1px solid ${T.emerald}33`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>재생에너지 비율</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.emerald, fontFeatureSettings: "'tnum'" }}>{renewablePct.toFixed(1)}%</p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>자체 생산 기준</p>
+          </div>
+          <div style={{ background: T.g50, border: `1px solid ${T.g200}`, borderRadius: 10, padding: 16 }}>
+            <p style={{ fontSize: 10, color: T.g500, letterSpacing: "0.06em", marginBottom: 4 }}>3년 누적 변화</p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: T.g900, fontFeatureSettings: "'tnum'" }}>
+              {oldest.total > 0 ? (totalChangePct >= 0 ? "+" : "") + totalChangePct.toFixed(1) + "%" : "—"}
+            </p>
+            <p style={{ fontSize: 11, color: T.g600, marginTop: 2 }}>{oldest.year} → {latest.year}</p>
+          </div>
+        </div>
+
+        {/* 차트 1: 3년 에너지 구성 스택 막대 */}
+        <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20, marginBottom: 16 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>⚡ 3년 에너지 소비 구성 ({REPORT_YEARS[0]}~{REPORT_YEARS[2]})</h4>
+          <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>단위: GJ · 연료(Scope 1) + 구매전력(Scope 2) + 자체생산 재생에너지</p>
+          <svg viewBox={`0 0 ${W1} ${H1}`} style={{ width: "100%", height: "auto", maxHeight: 320, display: "block" }}>
+            {Array.from({length: 6}).map((_, i) => {
+              const y = M1.top + (PH1 / 5) * i;
+              const val = niceMax * (1 - i / 5);
+              return (
+                <g key={`g1y${i}`}>
+                  <line x1={M1.left} y1={y} x2={M1.left + PW1} y2={y} stroke={T.g200} strokeDasharray="2 4"/>
+                  <text x={M1.left - 8} y={y + 4} textAnchor="end" fontSize="10" fill={T.g500}>{val.toFixed(0)}</text>
+                </g>
+              );
+            })}
+            <line x1={M1.left} y1={M1.top + PH1} x2={M1.left + PW1} y2={M1.top + PH1} stroke={T.g400} strokeWidth="1.5"/>
+
+            {energyByYear.map((e, i) => {
+              const gx = M1.left + groupW * i + groupW / 2;
+              const bx = gx - barW1 / 2;
+              const fuelH = (e.fuel / niceMax) * PH1;
+              const elecH = (e.electricity / niceMax) * PH1;
+              const renewH = (e.renewable / niceMax) * PH1;
+              const yFuelStart = M1.top + PH1 - fuelH;
+              const yElecStart = yFuelStart - elecH;
+              const yRenewStart = yElecStart - renewH;
+              return (
+                <g key={e.year}>
+                  {e.fuel > 0 && (
+                    <rect x={bx} y={yFuelStart} width={barW1} height={fuelH} fill={COL.fuel}>
+                      <title>연료 ({e.year}): {e.fuel.toFixed(2)} GJ</title>
+                    </rect>
+                  )}
+                  {e.electricity > 0 && (
+                    <rect x={bx} y={yElecStart} width={barW1} height={elecH} fill={COL.elec}>
+                      <title>전력 ({e.year}): {e.electricity.toFixed(2)} GJ</title>
+                    </rect>
+                  )}
+                  {e.renewable > 0 && (
+                    <rect x={bx} y={yRenewStart} width={barW1} height={renewH} fill={COL.renew}>
+                      <title>재생 ({e.year}): {e.renewable.toFixed(2)} GJ</title>
+                    </rect>
+                  )}
+                  {/* 합계 라벨 */}
+                  {e.total > 0.01 && (
+                    <text x={gx} y={yRenewStart - 6} textAnchor="middle" fontSize="11" fontWeight="700" fill={T.g800}>
+                      {e.total.toFixed(1)}
+                    </text>
+                  )}
+                  <text x={gx} y={M1.top + PH1 + 20} textAnchor="middle" fontSize="12" fontWeight="600" fill={T.g700}>{e.year}년</text>
+                </g>
+              );
+            })}
+
+            {/* 범례 */}
+            <g transform={`translate(${M1.left + 10}, ${H1 - 18})`}>
+              {[
+                { lbl: "연료 (비재생·Scope 1)", c: COL.fuel },
+                { lbl: "구매전력 (Scope 2)", c: COL.elec },
+                { lbl: "재생에너지 (자체 생산)", c: COL.renew }
+              ].map((it, i) => (
+                <g key={i} transform={`translate(${i * 170}, 0)`}>
+                  <rect width="11" height="11" rx="2" fill={it.c}/>
+                  <text x="16" y="10" fontSize="11" fill={T.g700}>{it.lbl}</text>
+                </g>
+              ))}
+            </g>
+          </svg>
+        </div>
+
+        {/* 하단 2열: 도넛 + 재생 게이지 */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {/* 차트 2: 최신 연도 에너지 구성 도넛 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>🔵 {YEAR_LATEST}년 에너지 구성</h4>
+            <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>최신 연도 구성비 · 총 {latest.total.toFixed(1)} GJ</p>
+            <svg viewBox={`0 0 ${W2} ${H2}`} style={{ width: "100%", height: "auto", display: "block" }}>
+              {latest.fuel > 0 && <path d={donutSlice(c2cx, c2cy, c2rOut, c2rIn, 0, fuelAng)} fill={COL.fuel}><title>연료: {latest.fuel.toFixed(1)} GJ</title></path>}
+              {latest.electricity > 0 && <path d={donutSlice(c2cx, c2cy, c2rOut, c2rIn, fuelAng, fuelAng + elecAng)} fill={COL.elec}><title>전력: {latest.electricity.toFixed(1)} GJ</title></path>}
+              {latest.renewable > 0 && <path d={donutSlice(c2cx, c2cy, c2rOut, c2rIn, fuelAng + elecAng, 360)} fill={COL.renew}><title>재생: {latest.renewable.toFixed(1)} GJ</title></path>}
+              
+              <text x={c2cx} y={c2cy - 6} textAnchor="middle" fontSize="10" fill={T.g500}>총 에너지</text>
+              <text x={c2cx} y={c2cy + 12} textAnchor="middle" fontSize="15" fontWeight="700" fill={T.g800}>{latest.total.toFixed(1)}</text>
+              <text x={c2cx} y={c2cy + 26} textAnchor="middle" fontSize="9" fill={T.g400}>GJ</text>
+
+              <g transform="translate(225, 45)">
+                {latest.fuel > 0 && (
+                  <g>
+                    <rect width="12" height="12" fill={COL.fuel} rx="2"/>
+                    <text x="18" y="10" fontSize="11" fontWeight="600" fill={T.g700}>연료</text>
+                    <text x="18" y="26" fontSize="10" fill={T.g500}>{latest.fuel.toFixed(1)} GJ ({(latest.total > 0 ? latest.fuel/latest.total*100 : 0).toFixed(0)}%)</text>
+                  </g>
+                )}
+                {latest.electricity > 0 && (
+                  <g transform="translate(0, 50)">
+                    <rect width="12" height="12" fill={COL.elec} rx="2"/>
+                    <text x="18" y="10" fontSize="11" fontWeight="600" fill={T.g700}>전력</text>
+                    <text x="18" y="26" fontSize="10" fill={T.g500}>{latest.electricity.toFixed(1)} GJ ({(latest.total > 0 ? latest.electricity/latest.total*100 : 0).toFixed(0)}%)</text>
+                  </g>
+                )}
+                {latest.renewable > 0 && (
+                  <g transform="translate(0, 100)">
+                    <rect width="12" height="12" fill={COL.renew} rx="2"/>
+                    <text x="18" y="10" fontSize="11" fontWeight="600" fill={T.g700}>재생</text>
+                    <text x="18" y="26" fontSize="10" fill={T.g500}>{latest.renewable.toFixed(1)} GJ ({(latest.total > 0 ? latest.renewable/latest.total*100 : 0).toFixed(0)}%)</text>
+                  </g>
+                )}
+              </g>
+            </svg>
+          </div>
+
+          {/* 차트 3: 재생에너지 비율 게이지 + 연도별 추세 */}
+          <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.g200}`, padding: 20 }}>
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: T.g800, marginBottom: 4 }}>🌱 재생에너지 비율 추이</h4>
+            <p style={{ fontSize: 11, color: T.g400, marginBottom: 16 }}>GRI 103-1 · RE100 · VSME B3</p>
+            
+            {/* 게이지 */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: T.g700 }}>{YEAR_LATEST}년 재생에너지 비율</span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: COL.renew, fontFeatureSettings: "'tnum'" }}>{renewablePct.toFixed(1)}%</span>
+              </div>
+              <div style={{ background: T.g100, borderRadius: 999, height: 14, overflow: "hidden", position: "relative" }}>
+                <div style={{ background: COL.renew, height: "100%", width: `${Math.min(100, renewablePct)}%`, borderRadius: 999, transition: "width 0.4s" }}/>
+                {/* 참조선 100% 표시 */}
+                <span style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: T.g500 }}>100%</span>
+              </div>
+            </div>
+
+            {/* 3년 추세 */}
+            <div style={{ marginTop: 14 }}>
+              <p style={{ fontSize: 11, color: T.g500, marginBottom: 8, letterSpacing: "0.06em" }}>3년 추세</p>
+              {energyByYear.map(e => {
+                const pct = e.total > 0 ? (e.renewable / e.total * 100) : 0;
+                return (
+                  <div key={e.year} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: T.g600, width: 50 }}>{e.year}</span>
+                    <div style={{ flex: 1, background: T.g100, borderRadius: 4, height: 8, overflow: "hidden" }}>
+                      <div style={{ background: COL.renew, height: "100%", width: `${Math.min(100, pct)}%` }}/>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: T.g700, width: 50, textAlign: "right", fontFeatureSettings: "'tnum'" }}>{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* 보고서 참조 안내 */}
+        <div style={{ marginTop: 16, padding: 14, background: T.g50, border: `1px solid ${T.g200}`, borderRadius: 10 }}>
+          <p style={{ fontSize: 12, color: T.g600, lineHeight: 1.6 }}>
+            📝 <strong>보고서 참조용</strong> · 이 시각화는 GRI 103-2(에너지 소비)와 103-1(에너지 정책)의 METRICS 섹션 기반 자료입니다. 
+            보고서 디자이너가 그래프 스타일과 수치를 그대로 참조하여 최종 보고서를 작성합니다.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (subPage === "consumption" || !subPage) {
     const latest = energyByYear[2];
     const renewablePct = latest.total > 0 ? (latest.renewable / latest.total * 100) : 0;
@@ -6995,20 +7235,15 @@ function ReportPreview({ scopeData, blockData }) {
 // ═══════════════════════════════════════════
 function NoAccessNotice({ feature, user }) {
   return (
-    <div style={{ maxWidth: 680, margin: "40px auto", padding: 40, background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", textAlign: "center" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-      <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 10 }}>{feature} · 컨설턴트 전용 영역</h2>
-      <p style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.7, marginBottom: 18 }}>
-        이 기능은 <strong>전문 수행사(컨설턴트)</strong> 계정에서만 열립니다.<br/>
-        플랫폼은 데이터 수집·정리까지를 담당하고,<br/>
-        <strong>결과물(보고서·이중중대성 분석·시각화)은 전문가가 작성·검증합니다.</strong>
+    <div style={{ maxWidth: 600, margin: "60px auto", padding: 40, background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", textAlign: "center" }}>
+      <div style={{ fontSize: 40, marginBottom: 14 }}>🔒</div>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#111827", marginBottom: 8 }}>접근 권한이 없습니다</h2>
+      <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.6, marginBottom: 14 }}>
+        현재 계정에서는 이 페이지에 접근할 수 없습니다.
       </p>
-      <div style={{ display: "inline-block", padding: "10px 16px", background: "#f3f4f6", borderRadius: 6, fontSize: 12, color: "#6b7280" }}>
-        현재 로그인: <strong style={{ color: "#111827" }}>{user.name}</strong> · {user.role === "staff" ? "담당자" : user.role === "manager" ? "ESG 총괄 관리자" : user.role}
+      <div style={{ display: "inline-block", padding: "8px 14px", background: "#f3f4f6", borderRadius: 6, fontSize: 11, color: "#6b7280" }}>
+        로그인: {user.name}
       </div>
-      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 20 }}>
-        결과물이 필요하시면 전문 수행사(이크레더블)에 문의해주세요.
-      </p>
     </div>
   );
 }
@@ -7143,8 +7378,8 @@ function StaffDashboard({ user, scopeData, blockData, blocks, standards }) {
       {/* 안내 박스 */}
       <div style={{ marginTop: 24, padding: 16, background: "#f9fafb", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: 0 }}>
-          💡 <strong>담당자 영역입니다.</strong> 본인 부서가 담당하는 항목만 입력·조회할 수 있습니다.<br/>
-          보고서 미리보기·이중중대성평가 등 <strong>결과물</strong>은 전문 수행사(컨설턴트) 계정에서 생성됩니다.
+          💡 왼쪽 메뉴에서 담당하시는 GRI 항목을 선택해 <strong>데이터 입력·수정</strong>하실 수 있습니다.<br/>
+          입력하신 내용은 <strong>자동 저장</strong>되며, 언제든 수정 가능합니다.
         </p>
       </div>
     </div>
@@ -7531,9 +7766,8 @@ function App() {
           </button>
           {canSeeResults(user) && (
             <button onClick={() => setPg("report")}
-              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "report" ? T.g100 : "transparent", color: pg === "report" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "report" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>📄 보고서 미리보기</span>
-              <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>컨설턴트</span>
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "none", background: pg === "report" ? T.g100 : "transparent", color: pg === "report" ? T.g900 : T.g500, fontSize: 13, fontWeight: pg === "report" ? 600 : 400, textAlign: "left", cursor: "pointer", marginBottom: 2 }}>
+              📄 보고서 미리보기
             </button>
           )}
 
@@ -7547,7 +7781,7 @@ function App() {
               { key: "anomaly", icon: "⚠️", label: "4. 이상치 리포트" },
               { key: "matrix", icon: "📊", label: "5. 결과 매트릭스" },
               { key: "confirm", icon: "✅", label: "6. 핵심 주제 확정" },
-              { key: "report", icon: "📝", label: "7. 보고서 생성", badge: "NEW" },
+              { key: "report", icon: "📝", label: "7. 보고서 생성" },
             ];
             const matActive = pg.startsWith("materiality_");
             return (
@@ -7558,10 +7792,8 @@ function App() {
                     color: matActive ? T.g900 : T.g600,
                     fontSize: 13, fontWeight: matActive ? 700 : 500,
                     textAlign: "left", cursor: "pointer",
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
                     marginBottom: 1 }}>
-                  <span>🎯 이중중대성평가</span>
-                  <span style={{ fontSize: 9, background: T.emerald, color: T.white, padding: "1px 6px", borderRadius: 3, fontWeight: 700 }}>NEW</span>
+                  🎯 이중중대성평가
                 </button>
                 {matActive && (
                   <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.g200}`, marginBottom: 6 }}>
@@ -7609,31 +7841,37 @@ function App() {
               ]},
               { code: "103", category: "환경", title: "에너지", subItems: [
                 { key: "consumption", icon: "⚡", label: "에너지 소비량", code: "103-2" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "intensity", icon: "📏", label: "에너지 집약도", code: "103-4" },
                 { key: "reduction", icon: "📉", label: "에너지 감축", code: "103-5" },
                 { key: "policy", icon: "📝", label: "에너지 정책", code: "103-1" },
               ]},
               { code: "303", category: "환경", title: "용수·폐수", subItems: [
                 { key: "usage", icon: "💧", label: "취수·방류량", code: "303-3,4,5" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "policy", icon: "📝", label: "용수 관리 정책", code: "303-1,2" },
               ]},
               { code: "306", category: "환경", title: "폐기물", subItems: [
                 { key: "generation", icon: "🗑️", label: "발생·재활용·처분", code: "306-3,4,5" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "policy", icon: "📝", label: "폐기물 관리 정책", code: "306-1,2" },
               ]},
               { code: "305", category: "환경", title: "대기·유해물질", subItems: [
                 { key: "air", icon: "💨", label: "대기오염물질", code: "305-7" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "chem", icon: "⚗️", label: "유해화학물질" },
                 { key: "policy", icon: "📝", label: "관리 정책" },
               ]},
               // 사회
               { code: "403", category: "사회", title: "산업안전보건", subItems: [
                 { key: "incidents", icon: "🛡️", label: "재해 지표", code: "403-9" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "health", icon: "🏥", label: "보건·교육", code: "403-8,10" },
                 { key: "policy", icon: "📝", label: "안전보건 정책", code: "403-1~4" },
               ]},
               { code: "people", category: "사회", title: "고용·교육·다양성", subItems: [
                 { key: "employment", icon: "👥", label: "고용·채용·이직", code: "401-1" },
+                { key: "dashboard", icon: "📈", label: "실시간 대시보드" },
                 { key: "training", icon: "📚", label: "교육훈련", code: "404-1" },
                 { key: "diversity", icon: "🌈", label: "다양성·여성임원", code: "405-1" },
               ]},
